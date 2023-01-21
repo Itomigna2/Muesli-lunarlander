@@ -40,7 +40,7 @@ Flow of self-play.
 ![selfplay3](https://user-images.githubusercontent.com/119741210/213879476-651f13f8-dc70-4033-b9f6-13efbe81bcc5.png)
 
 ## Unroll structure
-Target network 1-step unroll : When calculating v_pi_prior and second term of L_pg+cmpo.
+Target network 1-step unroll : When calculating v_pi_prior(s) and second term of L_pg+cmpo.
 
 Unroll 5-step(agent network) : Unroll agent network to optimize.
 
