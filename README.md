@@ -6,7 +6,7 @@ Here is simple implementation of Muesli algorithm. Muesli has same performance a
 
 Paper : [Muesli: Combining Improvements in Policy Optimization, Hessel et al., 2021](https://arxiv.org/abs/2104.06159) (v2 version)
 
-You can run this code on [colab demo link](), train the agent and monitor with tensorboard, play LunarLander-v2 environment with trained network. This agent can solve LunarLander-v2 within 1~2 hours computed by Google Colab CPU backend. It can reach about > 250 average score.
+You can run this code on [colab demo link](https://colab.research.google.com/drive/1h3Xy1AFn_CEgvKZkS8E2xasHDm5p03Xb?usp=sharing), train the agent and monitor with tensorboard, play LunarLander-v2 environment with trained network. This agent can solve LunarLander-v2 within 1~2 hours computed by Google Colab CPU backend. It can reach about > 250 average score.
 
 
 ## Implemented
