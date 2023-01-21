@@ -18,6 +18,7 @@ You can run this code on [colab demo link](), train the agent and monitor with t
 - [x] L_m (5 step)
 - [x] Stacking 8 observations
 - [x] Mini-batch update 
+- [x] Hidden state scaled within [-1,1]
 - [x] Gradient clipping by value [-1,1]
 - [x] Dynamics network gradient scale 1/2
 - [x] Target network(prior parameters) moving average update
@@ -36,7 +37,7 @@ You can run this code on [colab demo link](), train the agent and monitor with t
 
 ## Self-play
 Flow of self-play.
-![selfplay2](https://user-images.githubusercontent.com/119741210/213877111-d10fcd74-6c6c-4f01-8b8f-3fe1a5066b12.png)
+![selfplay3](https://user-images.githubusercontent.com/119741210/213879476-651f13f8-dc70-4033-b9f6-13efbe81bcc5.png)
 
 ## Unroll structure
 Target network 1-step unroll : When calculating v_pi_prior and second term of L_pg+cmpo.
