@@ -63,4 +63,6 @@ Need your help! Welcome to contribute, advice, question, etc.
 Contact : emtgit2@gmail.com (Available languages : English, Korean)
 
 ## Links
+Author's presentation : https://icml.cc/virtual/2021/poster/10769
+
 Lunarlander-v2 env document : https://www.gymlibrary.dev/environments/box2d/lunar_lander/
