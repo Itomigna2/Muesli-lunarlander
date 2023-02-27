@@ -67,6 +67,6 @@ Author's presentation : https://icml.cc/virtual/2021/poster/10769
 
 Lunarlander-v2 env document : https://www.gymlibrary.dev/environments/box2d/lunar_lander/
 
-Colab demo (main branch) : https://colab.research.google.com/drive/1h3Xy1AFn_CEgvKZkS8E2xasHDm5p03Xb?usp=sharing
+[Colab demo link (main branch)](https://colab.research.google.com/drive/1h3Xy1AFn_CEgvKZkS8E2xasHDm5p03Xb?usp=sharing)
 
-Colab demo (develop branch) : https://colab.research.google.com/drive/1mTVMnIxeijqEuvjmbFyGs7LPj3co-qoH?usp=sharing
+[Colab demo link (develop branch)](https://colab.research.google.com/drive/1mTVMnIxeijqEuvjmbFyGs7LPj3co-qoH?usp=sharing)
