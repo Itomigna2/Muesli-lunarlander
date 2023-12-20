@@ -1,5 +1,23 @@
 # Muesli (LunarLander-v2)
 
+
+## Notice (December 20, 2023)
+This repository will be developed for collaborative research with MILA's researchers.
+
+The goal is making distributed muesli algorithm for large scale training can be intergrated with 
+
+https://github.com/AGI-Collective/mini_ada
+
+https://github.com/AGI-Collective/u3
+
+https://github.com/Farama-Foundation/Minigrid
+
+And we consider using https://github.com/kakaobrain/brain-agent for distributed reinforcement learning.
+
+.ipynb codes will be remained in deprecated folder and main code will be developed in .py.
+
+
+
 ## Introduction
 
 Here is simple implementation of Muesli algorithm. Muesli has same performance and network architecture as MuZero, but it can be trained without MCTS lookahead search, just use one-step lookahead. It can reduce computational cost significantly compared to MuZero.
