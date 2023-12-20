@@ -51,7 +51,7 @@ You can run this code on [colab demo link](https://colab.research.google.com/dri
 - [ ] Atari environment
 
 ## Differences from paper
-- [x] Self-play use agent network (originally target network)
+- [x] ~~Self-play use agent network (originally target network)~~
 
 ## Self-play
 Flow of self-play.
