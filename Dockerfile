@@ -7,8 +7,7 @@ RUN apt-get update && apt-get install -y git \
     bash
 
 RUN pip install jupyterlab
-#RUN jupyter lab --generate-config \
-#    && echo "c.NotebookApp.terminado_settings = {'shell_command': ['/bin/bash']}" >> ~/.jupyter/jupyter_notebook_config.py
+RUN pip install --upgrade jupyterlab jupyterlab-git
 
 EXPOSE 8888
 
@@ -29,7 +28,7 @@ CMD ["jupyter", "lab", "--ip='*'", "--port=8888", "--no-browser", "--allow-root"
 #  In your Dockerfile directory
 #    docker build --build-arg CACHEBUST=$(date +%s) -t muesli_image .
 # docker run --gpus '"device=0,1"' -p 8888:8888 --name mu --rm -it muesli_image
-# access https://your.server.ip:8888 through your browser with token
+# access http://your.server.ip:8888 through your browser with token
 # Ctrl + P,Q to make docker bg
 # use it
 
