@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y git \
 
 RUN pip install jupyterlab
 RUN pip install --upgrade jupyterlab jupyterlab-git
+RUN pip install jupyter-collaboration
 EXPOSE 8888
 
 RUN git config --global user.name ${git_config_name}
