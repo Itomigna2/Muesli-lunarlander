@@ -6,8 +6,17 @@ ARG git_config_email=""
 
 RUN apt-get update && apt-get install -y git \
     python3-pip \
-    vim \
-    bash
+    vim 
+    
+RUN apt-get install -y software-properties-common
+RUN add-apt-repository ppa:deadsnakes/ppa
+RUN apt install python3.10
+RUN ln -s /usr/bin/python3.10 /usr/bin/python
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
 
 RUN pip install jupyterlab
 RUN pip install --upgrade jupyterlab jupyterlab-git
