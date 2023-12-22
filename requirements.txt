@@ -1,0 +1,5 @@
+tensorboardX
+gymnasium[box2d]
+torch
+matplotlib
+numpy
