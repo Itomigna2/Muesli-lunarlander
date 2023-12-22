@@ -16,6 +16,7 @@ RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install git+https://github.com/cmpark0126/pytorch-polynomial-lr-decay.git
 
 
 RUN pip install jupyterlab
