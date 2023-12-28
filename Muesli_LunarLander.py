@@ -14,7 +14,6 @@ import numpy as np
 
 #get_ipython().system('nvidia-smi')
 print(torch.cuda.is_available())
-print("library installation is done")
 
 
 # In[ ]:
@@ -249,6 +248,7 @@ class Agent(nn.Module):
         self.r_traj = []      
 
         game_score = 0
+        last_frame = 1000
         state = self.env.reset()
         state = state[0]
         state_dim = len(state)
