@@ -1,10 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
-
 from tensorboardX import SummaryWriter
 import gymnasium as gym
 import torch
@@ -12,20 +5,12 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 import numpy as np
 
-#get_ipython().system('nvidia-smi')
 print(torch.cuda.is_available())
-
-
-# In[ ]:
 
 
 ## For linear lr decay
 ## https://github.com/cmpark0126/pytorch-polynomial-lr-decay
-#get_ipython().system(' pip install git+https://github.com/cmpark0126/pytorch-polynomial-lr-decay.git')
 from torch_poly_lr_decay import PolynomialLRDecay
-
-
-# In[ ]:
 
 
 class Representation(nn.Module): 
@@ -609,9 +594,6 @@ torch.save(target.state_dict(), 'weights_target.pt')
 agent.env.close()
 
 
-# In[ ]:
-
-
 ## Earned score per episode
 
 window = 30
@@ -625,9 +607,7 @@ plt.plot(score_arr, label ='score')
 plt.plot(mean_arr, label ='mean')
 plt.ylim([-300,300])
 plt.legend(loc='upper left')
-
-
-# In[ ]:
+plt.show()
 
 
 ## game play video(target network)
@@ -665,9 +645,6 @@ for i in range(1000):
         break
 env.reset()
 env.display()
-
-
-# In[ ]:
 
 
 plt.plot(score_arr2, label ='accumulated scores in one game play')
