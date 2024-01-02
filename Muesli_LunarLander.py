@@ -7,6 +7,10 @@ import numpy as np
 
 print(torch.cuda.is_available())
 
+import nni
+params = {'regularizer_multiplier': 5}
+optimized_params = nni.get_next_parameter()
+params.update(optimized_params)
 
 ## For linear lr decay
 ## https://github.com/cmpark0126/pytorch-polynomial-lr-decay
@@ -426,7 +430,7 @@ class Agent(nn.Module):
             second_term = 0
             for k in range(self.action_space):
                 second_term += exp_clip_adv_arr[k]/z_cmpo_arr[k] * torch.log(first_P.gather(1, torch.unsqueeze(a1_arr[k],1).to(device)))
-            regularizer_multiplier = 5
+            regularizer_multiplier = params['regularizer_multiplier'] #5
             second_term *= -1 * regularizer_multiplier / self.action_space
 
 
@@ -558,6 +562,7 @@ class Agent(nn.Module):
 #%tensorboard --logdir scalar --port=6010
 
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+print(device)
 score_arr = []
 game_name = 'LunarLander-v2' 
 env = gym.make(game_name) 
@@ -571,18 +576,21 @@ target.load_state_dict(agent.state_dict())
 
 ## Self play & Weight update loop
 episode_nums = 4000
+last_game_score = 0
 for i in range(episode_nums):
     writer = SummaryWriter(logdir='scalar/')
     global_i = i    
     game_score , last_r, frame = agent.self_play_mu(target)       
     writer.add_scalar('score', game_score, global_i)    
+    nni.report_intermediate_result(game_score)
+    last_game_score = game_score
     score_arr.append(game_score)  
     print('episode, score, last_r, len\n', i, int(game_score), last_r, frame)
-
+    
     if i%100==0:
         torch.save(target.state_dict(), 'weights_target.pt') 
 
-    if game_score > 250 and np.mean(np.array(score_arr[-20:])) > 250:
+    if game_score > 50 and np.mean(np.array(score_arr[-20:])) > 50:
         torch.save(target.state_dict(), 'weights_target.pt') 
         print('Done')
         break
@@ -590,6 +598,7 @@ for i in range(episode_nums):
     agent.update_weights_mu(target) 
     writer.close()
 
+nni.report_final_result(game_score)
 torch.save(target.state_dict(), 'weights_target.pt')  
 agent.env.close()
 
