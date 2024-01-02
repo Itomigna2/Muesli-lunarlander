@@ -8,7 +8,7 @@ import numpy as np
 print(torch.cuda.is_available())
 
 import nni
-params = {'regularizer_multiplier': 5}
+params = {'regularizer_multiplier': 5, 'mb_dim': 16, 'iteration': 80}
 optimized_params = nni.get_next_parameter()
 params.update(optimized_params)
 
@@ -309,15 +309,15 @@ class Agent(nn.Module):
         Loss: L_pg_cmpo + L_v/6/4 + L_r/5/1 + L_m
         """
 
-        for _ in range(80): 
+        for _ in range(params['iteration']): 
             state_traj = []
             action_traj = []
             P_traj = []
             r_traj = []      
             G_arr_mb = []
 
-            for epi_sel in range(16):
-                if(epi_sel>3):## replay proportion
+            for epi_sel in range(params['mb_dim']):
+                if(epi_sel>=params['mb_dim']/4):## replay proportion
                     sel = np.random.randint(0,len(self.state_replay)) 
                 else:
                     sel = -1
@@ -384,7 +384,7 @@ class Agent(nn.Module):
 
             ## normalized advantage
             beta_var = 0.99
-            self.var = beta_var*self.var + (1-beta_var)*(torch.sum((G_arr_mb[:,0] - to_scalar(t_first_v_logits))**2)/16)
+            self.var = beta_var*self.var + (1-beta_var)*(torch.sum((G_arr_mb[:,0] - to_scalar(t_first_v_logits))**2)/params['mb_dim'])
             self.beta_product *= beta_var
             var_hat = self.var/(1-self.beta_product)
             under = torch.sqrt(var_hat + 1e-12)
@@ -448,7 +448,7 @@ class Agent(nn.Module):
                     t_P, t_v_logits = target.prediction_network(t_hs) 
 
                 beta_var = 0.99
-                self.var_m[i] = beta_var*self.var_m[i] + (1-beta_var)*(torch.sum((G_arr_mb[:,i+1] - to_scalar(t_v_logits))**2)/16)
+                self.var_m[i] = beta_var*self.var_m[i] + (1-beta_var)*(torch.sum((G_arr_mb[:,i+1] - to_scalar(t_v_logits))**2)/params['mb_dim'])
                 self.beta_product_m[i]  *= beta_var
                 var_hat = self.var_m[i] /(1-self.beta_product_m[i])
                 under = torch.sqrt(var_hat + 1e-12)
@@ -474,7 +474,7 @@ class Agent(nn.Module):
                     exp_clip_adv_arr = torch.tensor(exp_clip_adv_arr).to(device)
 
                 ## Paper appendix F.2 : Prior policy
-                t_P = 0.967*t_P + 0.03*P_traj + 0.003*torch.tensor([[0.25,0.25,0.25,0.25] for _ in range(16)]).to(device) 
+                t_P = 0.967*t_P + 0.03*P_traj + 0.003*torch.tensor([[0.25,0.25,0.25,0.25] for _ in range(params['mb_dim'])]).to(device) 
 
                 pi_cmpo_all = [(t_P.gather(1, torch.unsqueeze(a1_arr[k],1).to(device)) 
                                 * exp_clip_adv_arr[k])
@@ -590,7 +590,7 @@ for i in range(episode_nums):
     if i%100==0:
         torch.save(target.state_dict(), 'weights_target.pt') 
 
-    if game_score > 50 and np.mean(np.array(score_arr[-20:])) > 50:
+    if game_score > 100 and np.mean(np.array(score_arr[-20:])) > 100:
         torch.save(target.state_dict(), 'weights_target.pt') 
         print('Done')
         break
