@@ -1,3 +1,6 @@
+import math
+import time
+
 from tensorboardX import SummaryWriter
 import gymnasium as gym
 import torch
@@ -8,7 +11,7 @@ import numpy as np
 print(torch.cuda.is_available())
 
 import nni
-params = {'regularizer_multiplier': 5, 'mb_dim': 16, 'iteration': 80}
+params = {'regularizer_multiplier': 1, 'mb_dim': 16, 'iteration': 80}
 optimized_params = nni.get_next_parameter()
 params.update(optimized_params)
 
@@ -218,8 +221,8 @@ class Agent(nn.Module):
         self.var = 0
         self.beta_product = 1.0
 
-        self.var_m = [0 for _ in range(5)]
-        self.beta_product_m = [1.0 for _ in range(5)] 
+        self.var_m = [0 for _ in range(6)]
+        self.beta_product_m = [1.0 for _ in range(6)] 
 
 
     def self_play_mu(self, target, max_timestep=1000):       
@@ -349,7 +352,7 @@ class Agent(nn.Module):
             stacked_state_0 = torch.cat((state_traj[:,0], state_traj[:,1], state_traj[:,2], state_traj[:,3],
                                          state_traj[:,4], state_traj[:,5], state_traj[:,6], state_traj[:,7]), dim=1)
 
-
+            start = time.time()
             ## agent network inference (5 step unroll)
             first_hs = self.representation_network(stacked_state_0)
             first_P, first_v_logits = self.prediction_network(first_hs)      
@@ -374,7 +377,8 @@ class Agent(nn.Module):
             sixth_hs, r5_logits = self.dynamics_network(fifth_hs, action_traj[:,4])    
             sixth_P, sixth_v_logits = self.prediction_network(sixth_hs)
             inferenced_P_arr.append(sixth_P)
-
+            end = time.time()
+            print(f"unroll time consume {end - start:.5f} sec")
 
             ## target network inference
             with torch.no_grad():
@@ -397,7 +401,7 @@ class Agent(nn.Module):
             )
             first_term = -1 * importance_weight * (G_arr_mb[:,0] - to_scalar(t_first_v_logits))/under
 
-
+            '''
             ##lookahead inferences (one step look-ahead to some actions to estimate q_prior, from target network)
             with torch.no_grad():                                
                 r1_arr = []
@@ -432,15 +436,17 @@ class Agent(nn.Module):
                 second_term += exp_clip_adv_arr[k]/z_cmpo_arr[k] * torch.log(first_P.gather(1, torch.unsqueeze(a1_arr[k],1).to(device)))
             regularizer_multiplier = params['regularizer_multiplier'] #5
             second_term *= -1 * regularizer_multiplier / self.action_space
+            '''
 
 
-            ## L_pg_cmpo               
-            L_pg_cmpo = first_term + second_term
+            start = time.time()
 
 
             ## L_m
             L_m  = 0
-            for i in range(5):
+            #for i in range(5):
+            for i in range(-1,5):
+
                 stacked_state = torch.cat(( state_traj[:,i+1], state_traj[:,i+2], state_traj[:,i+3], state_traj[:,i+4],
                                             state_traj[:,i+5], state_traj[:,i+6], state_traj[:,i+7], state_traj[:,i+8]), dim=1)
                 with torch.no_grad():
@@ -448,9 +454,9 @@ class Agent(nn.Module):
                     t_P, t_v_logits = target.prediction_network(t_hs) 
 
                 beta_var = 0.99
-                self.var_m[i] = beta_var*self.var_m[i] + (1-beta_var)*(torch.sum((G_arr_mb[:,i+1] - to_scalar(t_v_logits))**2)/params['mb_dim'])
-                self.beta_product_m[i]  *= beta_var
-                var_hat = self.var_m[i] /(1-self.beta_product_m[i])
+                self.var_m[i+1] = beta_var*self.var_m[i+1] + (1-beta_var)*(torch.sum((G_arr_mb[:,i+1] - to_scalar(t_v_logits))**2)/params['mb_dim'])
+                self.beta_product_m[i+1]  *= beta_var
+                var_hat = self.var_m[i+1] /(1-self.beta_product_m[i+1])
                 under = torch.sqrt(var_hat + 1e-12)
 
                 with torch.no_grad():                                
@@ -483,11 +489,20 @@ class Agent(nn.Module):
                 pi_cmpo_all = torch.tensor(pi_cmpo_all).transpose(0,1).to(device)
                 pi_cmpo_all = pi_cmpo_all/torch.sum(pi_cmpo_all,dim=1).unsqueeze(-1)
                 kl_loss = torch.nn.KLDivLoss(reduction="batchmean")
-                L_m += kl_loss(torch.log(inferenced_P_arr[i+1]), pi_cmpo_all) 
+                if(i==-1):
+                    second_term = kl_loss(torch.log(inferenced_P_arr[i+1]), pi_cmpo_all)
+                else:
+                    L_m += kl_loss(torch.log(inferenced_P_arr[i+1]), pi_cmpo_all) 
             
             L_m/=5
 
+            end = time.time()
+            print(f"L_m time consume {end - start:.5f} sec")
 
+            ## L_pg_cmpo               
+            L_pg_cmpo = first_term + params['regularizer_multiplier'] * second_term
+            
+            
             ## L_v
             ls = nn.LogSoftmax(dim=-1)
 
@@ -521,13 +536,16 @@ class Agent(nn.Module):
 
             ## total loss
             L_total = L_pg_cmpo + L_v/6/4 + L_r/5/1 + L_m   
-          
+
             
+            start = time.time()
             ## optimize
             self.optimizer.zero_grad()
             L_total.mean().backward()
             nn.utils.clip_grad_value_(self.parameters(), clip_value=1.0)
             self.optimizer.step()
+            end = time.time()
+            print(f"optimize time consume {end - start:.5f} sec")
             
 
             ## target network(prior parameters) moving average update
@@ -580,7 +598,10 @@ last_game_score = 0
 for i in range(episode_nums):
     writer = SummaryWriter(logdir='scalar/')
     global_i = i    
+    start = time.time()
     game_score , last_r, frame = agent.self_play_mu(target)       
+    end = time.time()
+    print(f"selfplay time consume{end - start:.5f} sec")
     writer.add_scalar('score', game_score, global_i)    
     nni.report_intermediate_result(game_score)
     last_game_score = game_score
@@ -594,15 +615,17 @@ for i in range(episode_nums):
         torch.save(target.state_dict(), 'weights_target.pt') 
         print('Done')
         break
-
+    start = time.time()
     agent.update_weights_mu(target) 
+    end = time.time()
+    print(f"update time consume {end - start:.5f} sec")
     writer.close()
 
 nni.report_final_result(game_score)
 torch.save(target.state_dict(), 'weights_target.pt')  
 agent.env.close()
 
-
+'''
 ## Earned score per episode
 
 window = 30
@@ -658,4 +681,4 @@ env.display()
 
 plt.plot(score_arr2, label ='accumulated scores in one game play')
 plt.legend(loc='upper left')
-
+'''
