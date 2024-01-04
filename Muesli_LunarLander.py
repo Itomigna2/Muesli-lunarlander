@@ -84,18 +84,31 @@ class Dynamics(nn.Module):
         self.one_hot_act = torch.cat((torch.nn.functional.one_hot(torch.arange(0, action_space) % action_space, num_classes=action_space),
                                       torch.zeros(action_space).unsqueeze(0)),
                                       dim=0).to(device)        
-       
+        
     def forward(self, x, action):
-        action = self.one_hot_act[action.squeeze(1)]
-        x = torch.cat((x,action.to(device)), dim=1)
-        x = self.layer1(x)
-        x = torch.nn.functional.relu(x)
-        x = self.layer2(x)
-        x = torch.nn.functional.relu(x)
-        hs = self.hs_head(x)
-        hs = torch.nn.functional.relu(hs)
-        reward = self.reward_head(x)    
-        hs = 2*(hs - hs.min(-1,keepdim=True)[0])/(hs.max(-1,keepdim=True)[0] - hs.min(-1,keepdim=True)[0])-1
+        if(action.dim()==2):
+            action = self.one_hot_act[action.squeeze(1)]
+            x = torch.cat((x,action.to(device)), dim=1)
+            x = self.layer1(x)
+            x = torch.nn.functional.relu(x)
+            x = self.layer2(x)
+            x = torch.nn.functional.relu(x)
+            hs = self.hs_head(x)
+            hs = torch.nn.functional.relu(hs)
+            reward = self.reward_head(x)    
+            hs = 2*(hs - hs.min(-1,keepdim=True)[0])/(hs.max(-1,keepdim=True)[0] - hs.min(-1,keepdim=True)[0])-1
+        if(action.dim()==3):
+            action = torch.nn.functional.one_hot(action.to(torch.int64), num_classes=4)
+            action = action.squeeze(2)
+            x = torch.cat((x,action.to(device)), dim=2)
+            x = self.layer1(x)
+            x = torch.nn.functional.relu(x)
+            x = self.layer2(x)
+            x = torch.nn.functional.relu(x)
+            hs = self.hs_head(x)
+            hs = torch.nn.functional.relu(hs)
+            reward = self.reward_head(x)    
+            hs = 2*(hs - hs.min(-1,keepdim=True)[0])/(hs.max(-1,keepdim=True)[0] - hs.min(-1,keepdim=True)[0])-1
         return hs, reward
 
 
@@ -155,6 +168,14 @@ def to_scalar(x):
     probabilities = x
     support = (torch.tensor([x for x in range(-support_size, support_size + 1)]).expand(probabilities.shape).float().to(device))
     x = torch.sum(support * probabilities, dim=1, keepdim=True)
+    scalar = torch.sign(x) * (((torch.sqrt(1 + 4 * eps * (torch.abs(x) + 1 + eps)) - 1) / (2 * eps))** 2 - 1)
+    return scalar
+
+def to_scalar_3D(x):
+    x = torch.softmax(x, dim=-1)
+    probabilities = x
+    support = (torch.tensor([x for x in range(-support_size, support_size + 1)]).expand(probabilities.shape).float().to(device))
+    x = torch.sum(support * probabilities, dim=2, keepdim=True)
     scalar = torch.sign(x) * (((torch.sqrt(1 + 4 * eps * (torch.abs(x) + 1 + eps)) - 1) / (2 * eps))** 2 - 1)
     return scalar
 
@@ -399,106 +420,55 @@ class Agent(nn.Module):
                                         /(P_traj.gather(1,action_traj[:,0])),
                                         0, 1
             )
-            first_term = -1 * importance_weight * (G_arr_mb[:,0] - to_scalar(t_first_v_logits))/under
-
-            '''
-            ##lookahead inferences (one step look-ahead to some actions to estimate q_prior, from target network)
-            with torch.no_grad():                                
-                r1_arr = []
-                v1_arr = []
-                a1_arr = []
-                for _ in range(self.action_space): #sample <= N(action space), now N    
-                    action1_stack = []
-                    for p in t_first_P:             
-                        action1_stack.append(np.random.choice(np.arange(self.action_space), p=p.detach().cpu().numpy()))    
-                    hs, r1 = target.dynamics_network(t_first_hs, torch.unsqueeze(torch.tensor(action1_stack),1))
-                    _, v1 = target.prediction_network(hs)
-
-                    r1_arr.append(to_scalar(r1))
-                    v1_arr.append(to_scalar(v1))
-                    a1_arr.append(torch.tensor(action1_stack))               
-
-            ## z_cmpo_arr (eq.12)
-            with torch.no_grad():   
-                exp_clip_adv_arr = [torch.exp(torch.clip((r1_arr[k] + 0.997 * v1_arr[k] - to_scalar(t_first_v_logits))/under, -1, 1))
-                                    .tolist() for k in range(self.action_space)]
-                exp_clip_adv_arr = torch.tensor(exp_clip_adv_arr).to(device)
-                z_cmpo_arr = []
-                for k in range(self.action_space):
-                    z_cmpo = (1 + torch.sum(exp_clip_adv_arr[k],dim=0) - exp_clip_adv_arr[k]) / self.action_space 
-                    z_cmpo_arr.append(z_cmpo.tolist())
-            z_cmpo_arr = torch.tensor(z_cmpo_arr).to(device)
+            first_term = -1 * importance_weight * (G_arr_mb[:,0] - to_scalar(t_first_v_logits))/under        
 
 
-            ## L_pg_cmpo second term (eq.11)
-            second_term = 0
-            for k in range(self.action_space):
-                second_term += exp_clip_adv_arr[k]/z_cmpo_arr[k] * torch.log(first_P.gather(1, torch.unsqueeze(a1_arr[k],1).to(device)))
-            regularizer_multiplier = params['regularizer_multiplier'] #5
-            second_term *= -1 * regularizer_multiplier / self.action_space
-            '''
 
 
+            ## second_term(exact KL) + L_m
             start = time.time()
-
-
-            ## L_m
-            L_m  = 0
-            #for i in range(5):
-            for i in range(-1,5):
-
-                stacked_state = torch.cat(( state_traj[:,i+1], state_traj[:,i+2], state_traj[:,i+3], state_traj[:,i+4],
-                                            state_traj[:,i+5], state_traj[:,i+6], state_traj[:,i+7], state_traj[:,i+8]), dim=1)
+            L_m = 0      
+            for i in range(0,6):
                 with torch.no_grad():
+                    stacked_state = torch.cat(( state_traj[:,i], state_traj[:,i+1], state_traj[:,i+2], state_traj[:,i+3], state_traj[:,i+4], state_traj[:,i+5], state_traj[:,i+6], state_traj[:,i+7]), dim=1)
+                
                     t_hs = target.representation_network(stacked_state)
-                    t_P, t_v_logits = target.prediction_network(t_hs) 
+                    t_P, t_v_logits = target.prediction_network(t_hs)
+                    
+                    batch_t_hs = t_hs.repeat(self.action_space, 1, 1)                    
+                    batch_action = torch.zeros(params['mb_dim'], 1, dtype=torch.int64)
+                    batch_action = torch.cat([batch_action + i for i in range(self.action_space)], dim=0).view(self.action_space, params['mb_dim'], 1)
 
-                beta_var = 0.99
-                self.var_m[i+1] = beta_var*self.var_m[i+1] + (1-beta_var)*(torch.sum((G_arr_mb[:,i+1] - to_scalar(t_v_logits))**2)/params['mb_dim'])
-                self.beta_product_m[i+1]  *= beta_var
-                var_hat = self.var_m[i+1] /(1-self.beta_product_m[i+1])
-                under = torch.sqrt(var_hat + 1e-12)
+                    batch_lookahead_hs, batch_lookahead_r1 = target.dynamics_network(batch_t_hs, batch_action)
+                    _, batch_lookahead_v1 = target.prediction_network(batch_lookahead_hs)
 
-                with torch.no_grad():                                
-                    r1_arr = []
-                    v1_arr = []
-                    a1_arr = []
-                    for j in range(self.action_space):  
-                        action1_stack = []
-                        for _ in t_P:             
-                            action1_stack.append(j)    
-                        hs, r1 = target.dynamics_network(t_hs, torch.unsqueeze(torch.tensor(action1_stack),1))
-                        _, v1 = target.prediction_network(hs)
+                    ## normalized advantage
+                    beta_var = 0.99
+                    self.var_m[i] = beta_var*self.var_m[i] + (1-beta_var)*(torch.sum((G_arr_mb[:,i] - to_scalar(t_v_logits))**2)/params['mb_dim'])
+                    self.beta_product_m[i]  *= beta_var
+                    var_hat = self.var_m[i] /(1-self.beta_product_m[i])
+                    under = torch.sqrt(var_hat + 1e-12)
 
-                        r1_arr.append(to_scalar(r1))
-                        v1_arr.append(to_scalar(v1))
-                        a1_arr.append(torch.tensor(action1_stack))    
-
-                with torch.no_grad():   
-                    exp_clip_adv_arr = [torch.exp(torch.clip((r1_arr[k] + 0.997 * v1_arr[k] - to_scalar(t_v_logits))/under,-1, 1))
-                                        .tolist() for k in range(self.action_space)]
-                    exp_clip_adv_arr = torch.tensor(exp_clip_adv_arr).to(device)
-
-                ## Paper appendix F.2 : Prior policy
-                t_P = 0.967*t_P + 0.03*P_traj + 0.003*torch.tensor([[0.25,0.25,0.25,0.25] for _ in range(params['mb_dim'])]).to(device) 
-
-                pi_cmpo_all = [(t_P.gather(1, torch.unsqueeze(a1_arr[k],1).to(device)) 
-                                * exp_clip_adv_arr[k])
-                                .squeeze(-1).tolist() for k in range(self.action_space)]                
-        
-                pi_cmpo_all = torch.tensor(pi_cmpo_all).transpose(0,1).to(device)
-                pi_cmpo_all = pi_cmpo_all/torch.sum(pi_cmpo_all,dim=1).unsqueeze(-1)
-                kl_loss = torch.nn.KLDivLoss(reduction="batchmean")
-                if(i==-1):
-                    second_term = kl_loss(torch.log(inferenced_P_arr[i+1]), pi_cmpo_all)
+                    exp_clip_adv = torch.exp(torch.clip((to_scalar_3D(batch_lookahead_r1) + 0.997*to_scalar_3D(batch_lookahead_v1) - to_scalar(t_v_logits).repeat(self.action_space, 1, 1))/under, -1,1))
+                    
+                    ## Paper appendix F.2 : Prior policy
+                    t_P = 0.967*t_P + 0.03*P_traj + 0.003*torch.full((params['mb_dim'], self.action_space), 1/self.action_space, device=device)
+                    
+                    pi_cmpo_all = t_P * exp_clip_adv.transpose(0,1).squeeze(-1)
+                    pi_cmpo_all = pi_cmpo_all / torch.sum(pi_cmpo_all, dim=-1, keepdim=True)         
+                                        
+                    kl_loss = torch.nn.KLDivLoss(reduction="batchmean")
+                if(i==0):
+                    second_term = kl_loss(torch.log(inferenced_P_arr[i]), pi_cmpo_all)
                 else:
-                    L_m += kl_loss(torch.log(inferenced_P_arr[i+1]), pi_cmpo_all) 
-            
+                    L_m += kl_loss(torch.log(inferenced_P_arr[i]), pi_cmpo_all) 
             L_m/=5
 
             end = time.time()
             print(f"L_m time consume {end - start:.5f} sec")
-
+            
+            
+            
             ## L_pg_cmpo               
             L_pg_cmpo = first_term + params['regularizer_multiplier'] * second_term
             
@@ -611,7 +581,7 @@ for i in range(episode_nums):
     if i%100==0:
         torch.save(target.state_dict(), 'weights_target.pt') 
 
-    if game_score > 100 and np.mean(np.array(score_arr[-20:])) > 100:
+    if game_score > 250 and np.mean(np.array(score_arr[-20:])) > 250:
         torch.save(target.state_dict(), 'weights_target.pt') 
         print('Done')
         break

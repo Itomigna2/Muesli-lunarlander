@@ -8,9 +8,9 @@ search_space = {
     #'regularizer_multiplier': {'_type': 'choice', '_value': [0.3, 1, 3, 5, 10]},
     #'mb_dim': {'_type': 'choice', '_value' : [8, 16, 32, 64, 128]},
     #'iteration': {'_type': 'choice', '_value' : [5, 10, 20, 40, 80, 160]},
-    'regularizer_multiplier': {'_type': 'choice', '_value': [0.1, 0.3, 1, 3, 5, 10]},
+    'regularizer_multiplier': {'_type': 'choice', '_value': [0.5, 1, 1.5]},
     'mb_dim': {'_type': 'choice', '_value' : [16, 32]},
-    'iteration': {'_type': 'choice', '_value' : [20, 40, 80]},
+    'iteration': {'_type': 'choice', '_value' : [40, 80]},
     #'regularizer_multiplier': {'_type': 'uniform', '_value': [0.1, 10]},
 
 }
