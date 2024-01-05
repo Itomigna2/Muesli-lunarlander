@@ -1,0 +1,20 @@
+searchSpace:
+  regularizer_multiplier:
+    _type: choice
+    _value: [1, 2]
+  mb_dim:
+    _type: choice
+    _value: [16, 32]
+  iteration:
+    _type: choice
+    _value: [40, 80]
+trialCommand: python Muesli_LunarLander.py
+trialGpuNumber: 1
+trialConcurrency: 2
+tuner:
+  name: TPE
+  classArgs:
+    optimize_mode: maximize
+trainingService:
+  platform: local
+  useActiveGpu: True

@@ -549,7 +549,7 @@ class Agent(nn.Module):
 #%load_ext tensorboard
 #%tensorboard --logdir scalar --port=6010
 
-device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 print(device)
 score_arr = []
 game_name = 'LunarLander-v2' 
