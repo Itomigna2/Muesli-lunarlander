@@ -1,7 +1,12 @@
 # Muesli (LunarLander-v2)
 
+## Introduction
 
-## Notice (December 20, 2023)
+Here is simple implementation of Muesli algorithm. Muesli has same performance and network architecture as MuZero, but it can be trained without MCTS lookahead search, just use one-step lookahead. It can reduce computational cost significantly compared to MuZero.
+
+Paper : [Muesli: Combining Improvements in Policy Optimization, Hessel et al., 2021](https://arxiv.org/abs/2104.06159) (v2 version)
+
+## Objective
 This repository will be developed for collaborative research with MILA's researchers.
 
 The goal is making distributed muesli algorithm for large scale training can be intergrated with 
@@ -14,10 +19,39 @@ https://github.com/Farama-Foundation/Minigrid
 
 And we consider using https://github.com/kakaobrain/brain-agent for distributed reinforcement learning.
 
-.ipynb codes will be remained in deprecated folder and main code will be developed in .py.
+
+## How to use
+1. Install docker
+2. Build Dockerfile
+    1. docker build --build-arg git_config_name="your_git_name" --build-arg git_config_email="your_git_email" --build-arg CACHEBUST=$(date +%s) -t muesli_image .
+3. Run docker image
+    1. docker run --gpus '"device=0,1"' -p 8888:8888 -p 8080:8080 --name mu --rm -it muesli_image
+    2. (Adjust options for your device configuration)
+4. Copy the jupyterlab token
+    1. (If you want to make it background process, press Ctrl + P,Q)
+5. Login to the jupyterlab
+    1. Browser or jupyterlab desktop
+        1. http://local_or_server_ip:8888
+    2. (If you want use bash shell, just type ‘bash’ and enter on the default terminal)
+6. Launch HPO experiment with nni
+    1. nnictl create -f --config config.yml
+    2. Access through browser
+        1. http://local_or_server_ip:8080
+    
+
+* Develope with jupyterlab
+  * jupyterlab-git and jupyter-collaboration are installed.
+  * (Code was cloned into container when build, and it will be removed when container closed)
+
+* See experiment’s progress on MS nni
+  * You can see experiments on ‘Trials detail’ tab, and see hyperparameters by using Add/Remove columns button.
 
 
 
+
+<details><summary>Previous README.md</summary>
+<p>
+  
 ## Introduction
 
 Here is simple implementation of Muesli algorithm. Muesli has same performance and network architecture as MuZero, but it can be trained without MCTS lookahead search, just use one-step lookahead. It can reduce computational cost significantly compared to MuZero.
@@ -88,3 +122,9 @@ Lunarlander-v2 env document : https://www.gymlibrary.dev/environments/box2d/luna
 [Colab demo link (main branch)](https://colab.research.google.com/drive/1h3Xy1AFn_CEgvKZkS8E2xasHDm5p03Xb?usp=sharing)
 
 [Colab demo link (develop branch)](https://colab.research.google.com/drive/1mTVMnIxeijqEuvjmbFyGs7LPj3co-qoH?usp=sharing)
+
+
+</p>
+</details>
+
+
