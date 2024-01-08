@@ -21,29 +21,24 @@ And we consider using https://github.com/kakaobrain/brain-agent for distributed 
 
 
 ## How to use
-1. Install docker
-2. Build Dockerfile
-    1. docker build --build-arg git_config_name="your_git_name" --build-arg git_config_email="your_git_email" --build-arg CACHEBUST=$(date +%s) -t muesli_image .
-3. Run docker image
-    1. docker run --gpus '"device=0,1"' -p 8888:8888 -p 8080:8080 --name mu --rm -it muesli_image
-    2. (Adjust options for your device configuration)
-4. Copy the jupyterlab token
-    1. (If you want to make it background process, press Ctrl + P,Q)
-5. Login to the jupyterlab
-    1. Browser or jupyterlab desktop
-        1. http://local_or_server_ip:8888
-    2. (If you want use bash shell, just type ‘bash’ and enter on the default terminal)
-6. Launch HPO experiment with nni
-    1. nnictl create -f --config config.yml
-    2. Access through browser
-        1. http://local_or_server_ip:8080
+### Installation
+1. Install Docker
+2. Download Dockerfile
+3. Build Dockerfile ``docker build --build-arg git_config_name="your_git_name" --build-arg git_config_email="your_git_email" --build-arg CACHEBUST=$(date +%s) -t muesli_image .``
+4. Run docker image (Adjust options for your device configuration)
+``docker run --gpus '"device=0,1"' -p 8888:8888 -p 8080:8080 --name mu --rm -it muesli_image``
+5. Copy the jupyterlab token (If you want to make it background process, press Ctrl + P,Q)
+6. Login to the jupyterlab through browser or jupyterlab desktop ```http://your_local_or_server_ip:8888``` with token
+7. Launch HPO experiment with nni (on the jupyterlab terminal) ``nnictl create -f --config config.yml``
+8. Access nni through browser ``http://your_local_or_server_ip:8080``
     
 
-* Develope with jupyterlab
+### Develope with jupyterlab
   * jupyterlab-git and jupyter-collaboration are installed.
-  * (Code was cloned into container when build, and it will be removed when container closed)
+  * Code was cloned into container when build, and it will be removed when container closed.
+  * If you want use bash shell on jupyterlab, just type ‘bash’ and press enter on the default terminal.
 
-* See experiment’s progress on MS nni
+### See experiment’s progress on MS nni
   * You can see experiments on ‘Trials detail’ tab, and see hyperparameters by using Add/Remove columns button.
 
 
