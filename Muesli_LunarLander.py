@@ -11,9 +11,36 @@ import numpy as np
 print(torch.cuda.is_available())
 
 import nni
-params = {'regularizer_multiplier': 1, 'mb_dim': 16, 'iteration': 80}
+params = {
+    'regularizer_multiplier': 1,
+    'mb_dim': 128,
+    'iteration': 80,
+
+    'support_size': 30,
+    'eps': 0.001,
+
+    'game_name': 'LunarLander-v2',
+    'env_observation_space': 8,
+    'action_space': 4,
+    'mlp_width': 128,
+
+    'start_lr': 0.0003,
+    'expriment_length': 4000,
+
+    #max timestep
+    #stacking frames
+    #gamma
+    #target network update related
+    #adv related
+    #etc
+        
+    
+}
+
+
 optimized_params = nni.get_next_parameter()
 params.update(optimized_params)
+
 
 ## For linear lr decay
 ## https://github.com/cmpark0126/pytorch-polynomial-lr-decay
@@ -69,9 +96,9 @@ class Dynamics(nn.Module):
     input : hs, action
     output : next_hs, reward 
     """
-    def __init__(self, input_dim, output_dim, width, action_space):
+    def __init__(self, input_dim, output_dim, width):
         super().__init__()
-        self.layer1 = torch.nn.Linear(input_dim + action_space, width)
+        self.layer1 = torch.nn.Linear(input_dim + params['action_space'], width)
         self.layer2 = torch.nn.Linear(width, width) 
         self.hs_head = torch.nn.Linear(width, output_dim)
         self.reward_head = nn.Sequential(
@@ -81,9 +108,7 @@ class Dynamics(nn.Module):
             nn.ReLU(),
             nn.Linear(width,support_size*2+1)           
         ) 
-        self.one_hot_act = torch.cat((torch.nn.functional.one_hot(torch.arange(0, action_space) % action_space, num_classes=action_space),
-                                      torch.zeros(action_space).unsqueeze(0)),
-                                      dim=0).to(device)        
+        self.one_hot_act = torch.cat((torch.nn.functional.one_hot(torch.arange(0, params['action_space']) % params['action_space'], num_classes=params['action_space']), torch.zeros(params['action_space']).unsqueeze(0)), dim=0).to(device)        
         
     def forward(self, x, action):
         if(action.dim()==2):
@@ -124,7 +149,7 @@ class Prediction(nn.Module):
     input : hs
     output : P, V 
     """
-    def __init__(self, input_dim, output_dim, width):
+    def __init__(self, input_dim, width):
         super().__init__()
         self.layer1 = torch.nn.Linear(input_dim, width)
         self.layer2 = torch.nn.Linear(width, width) 
@@ -133,7 +158,7 @@ class Prediction(nn.Module):
             nn.ReLU(),
             nn.Linear(width,width),
             nn.ReLU(),
-            nn.Linear(width,output_dim)           
+            nn.Linear(width, params['action_space'])           
         ) 
         self.value_head = nn.Sequential(
             nn.Linear(width,width),
@@ -160,8 +185,8 @@ reference : https://github.com/werner-duvaud/muzero-general
 In my opinion, support size have to cover the range of maximum absolute value of 
 reward and value of entire trajectories. Support_size 30 can cover almost [-900,900].
 """
-support_size = 30
-eps = 0.001
+support_size = params['support_size']
+eps = params['eps']
 
 def to_scalar(x):
     x = torch.softmax(x, dim=-1)
@@ -214,8 +239,8 @@ class Target(nn.Module):
     def __init__(self, state_dim, action_dim, width):
         super().__init__()
         self.representation_network = Representation(state_dim*8, state_dim*4, width) 
-        self.dynamics_network = Dynamics(state_dim*4, state_dim*4, width, action_dim)
-        self.prediction_network = Prediction(state_dim*4, action_dim, width) 
+        self.dynamics_network = Dynamics(state_dim*4, state_dim*4, width)
+        self.prediction_network = Prediction(state_dim*4, width) 
         self.to(device)
 
 
@@ -225,10 +250,10 @@ class Agent(nn.Module):
     def __init__(self, state_dim, action_dim, width):
         super().__init__()
         self.representation_network = Representation(state_dim*8, state_dim*4, width) 
-        self.dynamics_network = Dynamics(state_dim*4, state_dim*4, width, action_dim)
-        self.prediction_network = Prediction(state_dim*4, action_dim, width) 
-        self.optimizer = torch.optim.AdamW(self.parameters(), lr=0.0003, weight_decay=0)
-        self.scheduler = PolynomialLRDecay(self.optimizer, max_decay_steps=4000, end_learning_rate=0.0000)   
+        self.dynamics_network = Dynamics(state_dim*4, state_dim*4, width)
+        self.prediction_network = Prediction(state_dim*4, width) 
+        self.optimizer = torch.optim.AdamW(self.parameters(), lr=params['start_lr'], weight_decay=0)
+        self.scheduler = PolynomialLRDecay(self.optimizer, max_decay_steps=params['expriment_length'], end_learning_rate=0.0000)   
         self.to(device)
 
         self.state_replay = []
@@ -236,9 +261,8 @@ class Agent(nn.Module):
         self.P_replay = []
         self.r_replay = []   
 
-        self.action_space = action_dim
-        self.env = gym.make(game_name)     
-
+        self.env = gym.make(params['game_name'])
+                            
         self.var = 0
         self.beta_product = 1.0
 
@@ -276,7 +300,7 @@ class Agent(nn.Module):
             with torch.no_grad():
                 hs = target.representation_network(torch.from_numpy(stacked_state).float().to(device))
                 P, v = target.prediction_network(hs)    
-            action = np.random.choice(np.arange(self.action_space), p=P.detach().cpu().numpy())   
+            action = np.random.choice(np.arange(params['action_space'] ), p=P.detach().cpu().numpy())   
             state, r, done, info, _ = self.env.step(action)                    
             
             if i == 0:
@@ -435,9 +459,9 @@ class Agent(nn.Module):
                     t_hs = target.representation_network(stacked_state)
                     t_P, t_v_logits = target.prediction_network(t_hs)
                     
-                    batch_t_hs = t_hs.repeat(self.action_space, 1, 1)                    
+                    batch_t_hs = t_hs.repeat(params['action_space'] , 1, 1)                    
                     batch_action = torch.zeros(params['mb_dim'], 1, dtype=torch.int64)
-                    batch_action = torch.cat([batch_action + i for i in range(self.action_space)], dim=0).view(self.action_space, params['mb_dim'], 1)
+                    batch_action = torch.cat([batch_action + i for i in range(params['action_space'])], dim=0).view(params['action_space'], params['mb_dim'], 1)
 
                     batch_lookahead_hs, batch_lookahead_r1 = target.dynamics_network(batch_t_hs, batch_action)
                     _, batch_lookahead_v1 = target.prediction_network(batch_lookahead_hs)
@@ -449,10 +473,10 @@ class Agent(nn.Module):
                     var_hat = self.var_m[i] /(1-self.beta_product_m[i])
                     under = torch.sqrt(var_hat + 1e-12)
 
-                    exp_clip_adv = torch.exp(torch.clip((to_scalar_3D(batch_lookahead_r1) + 0.997*to_scalar_3D(batch_lookahead_v1) - to_scalar(t_v_logits).repeat(self.action_space, 1, 1))/under, -1,1))
+                    exp_clip_adv = torch.exp(torch.clip((to_scalar_3D(batch_lookahead_r1) + 0.997*to_scalar_3D(batch_lookahead_v1) - to_scalar(t_v_logits).repeat(params['action_space'], 1, 1))/under, -1,1))
                     
                     ## Paper appendix F.2 : Prior policy
-                    t_P = 0.967*t_P + 0.03*P_traj + 0.003*torch.full((params['mb_dim'], self.action_space), 1/self.action_space, device=device)
+                    t_P = 0.967*t_P + 0.03*P_traj + 0.003*torch.full((params['mb_dim'], params['action_space'] ), 1/params['action_space'], device=device)
                     
                     pi_cmpo_all = t_P * exp_clip_adv.transpose(0,1).squeeze(-1)
                     pi_cmpo_all = pi_cmpo_all / torch.sum(pi_cmpo_all, dim=-1, keepdim=True)         
@@ -552,20 +576,19 @@ class Agent(nn.Module):
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 print(device)
 score_arr = []
-game_name = 'LunarLander-v2' 
-env = gym.make(game_name) 
-target = Target(env.observation_space.shape[0], env.action_space.n, 128)
-agent = Agent(env.observation_space.shape[0], env.action_space.n, 128)  
+
+target = Target(params['env_observation_space'], params['action_space'] , params['mlp_width'])
+agent = Agent(params['env_observation_space'], params['action_space'] , params['mlp_width'])  
 print(agent)
-env.close()
+
 
 ## initialization
 target.load_state_dict(agent.state_dict())
 
 ## Self play & Weight update loop
-episode_nums = 4000
+
 last_game_score = 0
-for i in range(episode_nums):
+for i in range(params['expriment_length']):
     writer = SummaryWriter(logdir='scalar/')
     global_i = i    
     start = time.time()

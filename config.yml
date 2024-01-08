@@ -2,13 +2,16 @@ experimentName: Muesli
 searchSpace:
   regularizer_multiplier:
     _type: choice
-    _value: [1, 2]
+    _value: [1]
   mb_dim:
     _type: choice
-    _value: [16, 32, 64, 128, 256]
+    _value: [128, 256, 512]
   iteration:
     _type: choice
-    _value: [40, 80]
+    _value: [20, 80]
+  mlp_width:
+    _type: choice
+    _value: [128, 256]
 trialCommand: python Muesli_LunarLander.py
 trialGpuNumber: 1
 trialConcurrency: 10
