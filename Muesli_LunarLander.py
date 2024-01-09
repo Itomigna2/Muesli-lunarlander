@@ -15,18 +15,24 @@ params = {
     'regularizer_multiplier': 1,
     'mb_dim': 128,
     'iteration': 80,
+    'replay_proportion': 25,   # x %
+    'start_lr': 0.0003,
+    'expriment_length': 4000,
+    'mlp_width': 128,
 
     'support_size': 30,
     'eps': 0.001,
 
-    'game_name': 'LunarLander-v2',
+    'game_name': 'LunarLander-v2', 
     'env_observation_space': 8,
     'action_space': 4,
-    'mlp_width': 128,
 
-    'start_lr': 0.0003,
-    'expriment_length': 4000,
+    'stacking_frame': 8,
 
+
+    #index related 
+    #loop related
+    
     #max timestep
     #stacking frames
     #gamma
@@ -365,7 +371,7 @@ class Agent(nn.Module):
             G_arr_mb = []
 
             for epi_sel in range(params['mb_dim']):
-                if(epi_sel>=params['mb_dim']/4):## replay proportion
+                if(epi_sel>=params['mb_dim'] * params['replay_proportion'] / 100):## replay proportion
                     sel = np.random.randint(0,len(self.state_replay)) 
                 else:
                     sel = -1
@@ -394,8 +400,8 @@ class Agent(nn.Module):
             inferenced_P_arr = []
 
             ## stacking 8 frame
-            stacked_state_0 = torch.cat((state_traj[:,0], state_traj[:,1], state_traj[:,2], state_traj[:,3],
-                                         state_traj[:,4], state_traj[:,5], state_traj[:,6], state_traj[:,7]), dim=1)
+            stacked_state_0 = torch.cat([state_traj[:, i] for i in range(params['stacking_frame'])], dim=1)
+
 
             start = time.time()
             ## agent network inference (5 step unroll)
@@ -454,7 +460,7 @@ class Agent(nn.Module):
             L_m = 0      
             for i in range(0,6):
                 with torch.no_grad():
-                    stacked_state = torch.cat(( state_traj[:,i], state_traj[:,i+1], state_traj[:,i+2], state_traj[:,i+3], state_traj[:,i+4], state_traj[:,i+5], state_traj[:,i+6], state_traj[:,i+7]), dim=1)
+                    stacked_state = torch.cat([state_traj[:, i] for i in range(params['stacking_frame'])], dim=1)
                 
                     t_hs = target.representation_network(stacked_state)
                     t_P, t_v_logits = target.prediction_network(t_hs)

@@ -8,10 +8,22 @@ searchSpace:
     _value: [128, 256, 512]
   iteration:
     _type: choice
-    _value: [20, 80]
+    _value: [80]
+  replay_proportion:
+    _type: choice
+    _value: [25]
+  start_lr:
+    _type: choice
+    _value: [0.0003]
+  'expriment_length':
+    _type: choice
+    _value: [4000]    
   mlp_width:
     _type: choice
-    _value: [128, 256]
+    _value: [128]
+
+
+    
 trialCommand: python Muesli_LunarLander.py
 trialGpuNumber: 1
 trialConcurrency: 10
