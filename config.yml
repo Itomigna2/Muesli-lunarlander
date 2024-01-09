@@ -2,13 +2,13 @@ experimentName: Muesli
 searchSpace:
   regularizer_multiplier:
     _type: choice
-    _value: [1]
+    _value: [1, 2]
   mb_dim:
     _type: choice
-    _value: [128, 256, 512]
+    _value: [32, 128, 512]
   iteration:
     _type: choice
-    _value: [80]
+    _value: [20, 80]
   replay_proportion:
     _type: choice
     _value: [25]
@@ -27,7 +27,7 @@ searchSpace:
 trialCommand: python Muesli_LunarLander.py
 trialGpuNumber: 1
 trialConcurrency: 10
-maxTrialNumber: 100
+maxTrialNumber: 30
 tuner:
   name: TPE
   classArgs:
@@ -35,4 +35,4 @@ tuner:
 trainingService:
   platform: local
   useActiveGpu: True
-  maxTrialNumberPerGpu: 20
+  maxTrialNumberPerGpu: 10

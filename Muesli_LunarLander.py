@@ -28,15 +28,15 @@ params = {
     'action_space': 4,
 
     'stacking_frame': 8,
+    'zeros_over_episode': 6,
+
+    'alpha_target' : 0.01, 
 
 
     #index related 
-    #loop related
-    
+    #loop related    
     #max timestep
-    #stacking frames
     #gamma
-    #target network update related
     #adv related
     #etc
         
@@ -298,7 +298,8 @@ class Agent(nn.Module):
         for i in range(max_timestep):   
             start_state = state
             if i == 0:
-                stacked_state = np.concatenate((state, state, state, state, state, state, state, state), axis=0)
+                #stacked_state = np.concatenate((np.tile(np.zeros_like(state),params['stacking_frame']-1),state))
+                stacked_state = np.tile(state, params['stacking_frame'])
             else:
                 stacked_state = np.roll(stacked_state,-state_dim,axis=0)                
                 stacked_state[-state_dim:]=state
@@ -310,8 +311,8 @@ class Agent(nn.Module):
             state, r, done, info, _ = self.env.step(action)                    
             
             if i == 0:
-                for _ in range(8):
-                    self.state_traj.append(start_state)
+                for _ in range(params['stacking_frame']):
+                    self.state_traj.append(start_state)                
             else:
                 self.state_traj.append(start_state)
             self.action_traj.append(action)
@@ -328,12 +329,11 @@ class Agent(nn.Module):
 
 
         # for update inference over trajectory length
-        for _ in range(5):
+        for _ in range(params['zeros_over_episode']):
             self.state_traj.append(np.zeros_like(state))
-
-        for _ in range(6):
             self.r_traj.append(0.0)
             self.action_traj.append(-1)  
+
 
         # traj append to replay
         self.state_replay.append(self.state_traj)
@@ -384,11 +384,11 @@ class Agent(nn.Module):
                     G_arr.append(G)
                 G_arr.reverse()
                 
-                for i in np.random.randint(len(self.state_replay[sel])-5-7,size=1):
-                    state_traj.append(self.state_replay[sel][i:i+13])
-                    action_traj.append(self.action_replay[sel][i:i+5])
-                    r_traj.append(self.r_replay[sel][i:i+5])
-                    G_arr_mb.append(G_arr[i:i+6])                        
+                for i in np.random.randint(len(self.state_replay[sel])-params['zeros_over_episode']-params['stacking_frame']+1,size=1):
+                    state_traj.append(self.state_replay[sel][i:i+params['zeros_over_episode']+params['stacking_frame']]) 
+                    action_traj.append(self.action_replay[sel][i:i+params['zeros_over_episode']])
+                    r_traj.append(self.r_replay[sel][i:i+params['zeros_over_episode']])
+                    G_arr_mb.append(G_arr[i:i+params['zeros_over_episode']+1])                        
                     P_traj.append(self.P_replay[sel][i])
 
 
@@ -549,7 +549,7 @@ class Agent(nn.Module):
             
 
             ## target network(prior parameters) moving average update
-            alpha_target = 0.01 
+            alpha_target = params['alpha_target']
             params1 = self.named_parameters()
             params2 = target.named_parameters()
             dict_params2 = dict(params2)
