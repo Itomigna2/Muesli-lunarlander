@@ -28,9 +28,11 @@ params = {
     'action_space': 4,
 
     'stacking_frame': 8,
-    'zeros_over_episode': 6,
+    #'zeros_over_episode': 6,
 
     'alpha_target' : 0.01, 
+
+    'unroll_step' : 5,
 
 
     #index related 
@@ -272,8 +274,8 @@ class Agent(nn.Module):
         self.var = 0
         self.beta_product = 1.0
 
-        self.var_m = [0 for _ in range(6)]
-        self.beta_product_m = [1.0 for _ in range(6)] 
+        self.var_m = [0 for _ in range(params['unroll_step']+1)] 
+        self.beta_product_m = [1.0 for _ in range(params['unroll_step']+1)] 
 
 
     def self_play_mu(self, target, max_timestep=1000):       
@@ -329,7 +331,7 @@ class Agent(nn.Module):
 
 
         # for update inference over trajectory length
-        for _ in range(params['zeros_over_episode']):
+        for _ in range(params['unroll_step']+1):
             self.state_traj.append(np.zeros_like(state))
             self.r_traj.append(0.0)
             self.action_traj.append(-1)  
@@ -384,11 +386,11 @@ class Agent(nn.Module):
                     G_arr.append(G)
                 G_arr.reverse()
                 
-                for i in np.random.randint(len(self.state_replay[sel])-params['zeros_over_episode']-params['stacking_frame']+1,size=1):
-                    state_traj.append(self.state_replay[sel][i:i+params['zeros_over_episode']+params['stacking_frame']]) 
-                    action_traj.append(self.action_replay[sel][i:i+params['zeros_over_episode']])
-                    r_traj.append(self.r_replay[sel][i:i+params['zeros_over_episode']])
-                    G_arr_mb.append(G_arr[i:i+params['zeros_over_episode']+1])                        
+                for i in np.random.randint(len(self.state_replay[sel])-params['unroll_step']-1-params['stacking_frame']+1,size=1):
+                    state_traj.append(self.state_replay[sel][i:i+params['unroll_step']+params['stacking_frame']]) 
+                    action_traj.append(self.action_replay[sel][i:i+params['unroll_step']])
+                    r_traj.append(self.r_replay[sel][i:i+params['unroll_step']])
+                    G_arr_mb.append(G_arr[i:i+params['unroll_step']+1])                        
                     P_traj.append(self.P_replay[sel][i])
 
 
@@ -398,6 +400,8 @@ class Agent(nn.Module):
             G_arr_mb = torch.from_numpy(np.array(G_arr_mb)).unsqueeze(2).float().to(device)
             r_traj = torch.from_numpy(np.array(r_traj)).unsqueeze(2).float().to(device)
             inferenced_P_arr = []
+            inferenced_r_logit_arr = []
+            inferenced_v_logit_arr = []
 
             ## stacking 8 frame
             stacked_state_0 = torch.cat([state_traj[:, i] for i in range(params['stacking_frame'])], dim=1)
@@ -405,10 +409,24 @@ class Agent(nn.Module):
 
             start = time.time()
             ## agent network inference (5 step unroll)
-            first_hs = self.representation_network(stacked_state_0)
-            first_P, first_v_logits = self.prediction_network(first_hs)      
+            
+            hs = self.representation_network(stacked_state_0)
+            first_P, first_v_logits = self.prediction_network(hs)
+            hs.register_hook(lambda grad: grad * 0.5)
             inferenced_P_arr.append(first_P)
+            inferenced_v_logit_arr.append(first_v_logits)
+            
 
+            for i in range(params['unroll_step']):
+                hs, r_logits = self.dynamics_network(hs, action_traj[:,i])    
+                P, v_logits = self.prediction_network(hs)
+                hs.register_hook(lambda grad: grad * 0.5)
+                inferenced_P_arr.append(P)            
+                inferenced_r_logit_arr.append(r_logits)
+                inferenced_v_logit_arr.append(v_logits)
+                
+
+            '''
             second_hs, r_logits = self.dynamics_network(first_hs, action_traj[:,0])    
             second_P, second_v_logits = self.prediction_network(second_hs)
             inferenced_P_arr.append(second_P)
@@ -428,6 +446,7 @@ class Agent(nn.Module):
             sixth_hs, r5_logits = self.dynamics_network(fifth_hs, action_traj[:,4])    
             sixth_P, sixth_v_logits = self.prediction_network(sixth_hs)
             inferenced_P_arr.append(sixth_P)
+            '''
             end = time.time()
             print(f"unroll time consume {end - start:.5f} sec")
 
@@ -458,7 +477,7 @@ class Agent(nn.Module):
             ## second_term(exact KL) + L_m
             start = time.time()
             L_m = 0      
-            for i in range(0,6):
+            for i in range(params['unroll_step']+1):
                 with torch.no_grad():
                     stacked_state = torch.cat([state_traj[:, i] for i in range(params['stacking_frame'])], dim=1)
                 
@@ -492,7 +511,7 @@ class Agent(nn.Module):
                     second_term = kl_loss(torch.log(inferenced_P_arr[i]), pi_cmpo_all)
                 else:
                     L_m += kl_loss(torch.log(inferenced_P_arr[i]), pi_cmpo_all) 
-            L_m/=5
+            L_m/=params['unroll_step']
 
             end = time.time()
             print(f"L_m time consume {end - start:.5f} sec")
@@ -506,8 +525,21 @@ class Agent(nn.Module):
             ## L_v
             ls = nn.LogSoftmax(dim=-1)
 
+            ## pytorch 내장메소드로 바꾸기
+            L_v = 0
+            for i in range(params['unroll_step']+1):
+                L_v += (to_cr(G_arr_mb[:,i])*ls(inferenced_v_logit_arr[i])).sum(-1, keepdim=True)
+            L_v *= -1
+
+            L_r = 0
+            for i in range(params['unroll_step']):
+                L_r += (to_cr(r_traj[:,i])*ls(inferenced_r_logit_arr[i])).sum(-1, keepdim=True)
+            L_r *= -1
+
+            
+            '''
             L_v = -1 * (
-                (to_cr(G_arr_mb[:,0])*ls(first_v_logits)).sum(-1, keepdim=True)
+                (to_cr(G_arr_mb[:,0])*ls(inferenced_v_logit_arr[0])).sum(-1, keepdim=True)
                 +  (to_cr(G_arr_mb[:,1])*ls(second_v_logits)).sum(-1, keepdim=True)
                 +  (to_cr(G_arr_mb[:,2])*ls(third_v_logits)).sum(-1, keepdim=True)
                 +  (to_cr(G_arr_mb[:,3])*ls(fourth_v_logits)).sum(-1, keepdim=True)
@@ -523,8 +555,9 @@ class Agent(nn.Module):
                 + (to_cr(r_traj[:,3])*ls(r4_logits)).sum(-1, keepdim=True)
                 + (to_cr(r_traj[:,4])*ls(r5_logits)).sum(-1, keepdim=True)
             )
+            '''
 
-
+            '''
             ## start of dynamics network gradient *0.5
             first_hs.register_hook(lambda grad: grad * 0.5)
             second_hs.register_hook(lambda grad: grad * 0.5) 
@@ -532,7 +565,7 @@ class Agent(nn.Module):
             fourth_hs.register_hook(lambda grad: grad * 0.5)   
             fifth_hs.register_hook(lambda grad: grad * 0.5)  
             sixth_hs.register_hook(lambda grad: grad * 0.5)  
-
+            '''
 
             ## total loss
             L_total = L_pg_cmpo + L_v/6/4 + L_r/5/1 + L_m   

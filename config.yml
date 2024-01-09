@@ -21,13 +21,16 @@ searchSpace:
   mlp_width:
     _type: choice
     _value: [128]
+  unroll_step:
+    _type: choice
+    _value: [1,3,5,10]
 
 
     
 trialCommand: python Muesli_LunarLander.py
 trialGpuNumber: 1
-trialConcurrency: 10
-maxTrialNumber: 30
+trialConcurrency: 20
+maxTrialNumber: 100
 tuner:
   name: TPE
   classArgs:
@@ -35,4 +38,4 @@ tuner:
 trainingService:
   platform: local
   useActiveGpu: True
-  maxTrialNumberPerGpu: 10
+  maxTrialNumberPerGpu: 100
