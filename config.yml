@@ -9,9 +9,15 @@ searchSpace:
   iteration:
     _type: choice
     _value: [20, 80]
+  unroll_step:
+    _type: choice
+    _value: [4]
+  stacking_frame:
+    _type: choice
+    _value: [8]
   replay_proportion:
     _type: choice
-    _value: [25]
+    _value: [75]
   start_lr:
     _type: choice
     _value: [0.0003]
@@ -21,9 +27,20 @@ searchSpace:
   mlp_width:
     _type: choice
     _value: [128]
-  unroll_step:
+  discount:
     _type: choice
-    _value: [0,1,3,5,10]
+    _value: [0.997]
+
+  support_size:
+    _type: choice
+    _value: [30]
+  eps:
+    _type: choice
+    _value: [0.001]
+
+  alpha_target:
+    _type: choice
+    _value: [0.1, 0.01]
 
 
     

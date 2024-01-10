@@ -12,34 +12,32 @@ print(torch.cuda.is_available())
 
 import nni
 params = {
+    'game_name': 'LunarLander-v2', 
+    'env_observation_space': 8,
+    'action_space': 4,
+    
     'regularizer_multiplier': 1,
     'mb_dim': 128,
     'iteration': 80,
-    'replay_proportion': 25,   # x %
+    'unroll_step' : 5,
+    'stacking_frame': 8,
+    'replay_proportion': 75,   # x%
     'start_lr': 0.0003,
     'expriment_length': 4000,
     'mlp_width': 128,
+    'discount': 0.995,
 
     'support_size': 30,
     'eps': 0.001,
 
-    'game_name': 'LunarLander-v2', 
-    'env_observation_space': 8,
-    'action_space': 4,
+    'alpha_target': 0.01, # 0.1 ??
+    'value_loss_weight': 0.25,
+    'reward_loss_weight': 1,
+    
+    'beta_var': 0.99,
+    'eps_var': 1e-12,
 
-    'stacking_frame': 8,
-
-    'alpha_target' : 0.01, 
-
-    'unroll_step' : 5,
-
-
-    #index related 
-    #loop related    
-    #max timestep
-    #gamma
-    #adv related
-    #etc
+    'hs_resolution': 36,
         
     
 }
@@ -245,9 +243,9 @@ class Target(nn.Module):
     """
     def __init__(self, state_dim, action_dim, width):
         super().__init__()
-        self.representation_network = Representation(state_dim*8, state_dim*4, width) 
-        self.dynamics_network = Dynamics(state_dim*4, state_dim*4, width)
-        self.prediction_network = Prediction(state_dim*4, width) 
+        self.representation_network = Representation(state_dim*params['stacking_frame'], params['hs_resolution'], width) 
+        self.dynamics_network = Dynamics(params['hs_resolution'], params['hs_resolution'], width)
+        self.prediction_network = Prediction(params['hs_resolution'], width)  
         self.to(device)
 
 
@@ -256,9 +254,9 @@ class Agent(nn.Module):
     """Agent Class"""
     def __init__(self, state_dim, action_dim, width):
         super().__init__()
-        self.representation_network = Representation(state_dim*8, state_dim*4, width) 
-        self.dynamics_network = Dynamics(state_dim*4, state_dim*4, width)
-        self.prediction_network = Prediction(state_dim*4, width) 
+        self.representation_network = Representation(state_dim*params['stacking_frame'], params['hs_resolution'], width) 
+        self.dynamics_network = Dynamics(params['hs_resolution'], params['hs_resolution'], width)
+        self.prediction_network = Prediction(params['hs_resolution'], width) 
         self.optimizer = torch.optim.AdamW(self.parameters(), lr=params['start_lr'], weight_decay=0)
         self.scheduler = PolynomialLRDecay(self.optimizer, max_decay_steps=params['expriment_length'], end_learning_rate=0.0000)   
         self.to(device)
@@ -299,7 +297,6 @@ class Agent(nn.Module):
         for i in range(max_timestep):   
             start_state = state
             if i == 0:
-                #stacked_state = np.concatenate((np.tile(np.zeros_like(state),params['stacking_frame']-1),state))
                 stacked_state = np.tile(state, params['stacking_frame'])
             else:
                 stacked_state = np.roll(stacked_state,-state_dim,axis=0)                
@@ -372,7 +369,7 @@ class Agent(nn.Module):
             G_arr_mb = []
 
             for epi_sel in range(params['mb_dim']):
-                if(epi_sel>=params['mb_dim'] * params['replay_proportion'] / 100):## replay proportion
+                if(epi_sel < params['mb_dim'] * params['replay_proportion'] / 100):## replay proportion
                     sel = np.random.randint(0,len(self.state_replay)) 
                 else:
                     sel = -1
@@ -381,7 +378,7 @@ class Agent(nn.Module):
                 G = 0
                 G_arr = []
                 for r in self.r_replay[sel][::-1]:
-                    G = 0.997 * G + r
+                    G = params['discount'] * G + r
                     G_arr.append(G)
                 G_arr.reverse()
                 
@@ -433,11 +430,11 @@ class Agent(nn.Module):
 
 
             ## normalized advantage
-            beta_var = 0.99
+            beta_var = params['beta_var']
             self.var = beta_var*self.var + (1-beta_var)*(torch.sum((G_arr_mb[:,0] - to_scalar(t_first_v_logits))**2)/params['mb_dim'])
             self.beta_product *= beta_var
             var_hat = self.var/(1-self.beta_product)
-            under = torch.sqrt(var_hat + 1e-12)
+            under = torch.sqrt(var_hat + params['eps_var'])
 
 
             ## L_pg_cmpo first term (eq.10)
@@ -466,13 +463,13 @@ class Agent(nn.Module):
                     _, batch_lookahead_v1 = target.prediction_network(batch_lookahead_hs)
 
                     ## normalized advantage
-                    beta_var = 0.99
+                    beta_var = params['beta_var']
                     self.var_m[i] = beta_var*self.var_m[i] + (1-beta_var)*(torch.sum((G_arr_mb[:,i] - to_scalar(t_v_logits))**2)/params['mb_dim'])
                     self.beta_product_m[i]  *= beta_var
                     var_hat = self.var_m[i] /(1-self.beta_product_m[i])
-                    under = torch.sqrt(var_hat + 1e-12)
+                    under = torch.sqrt(var_hat + params['eps_var'])
 
-                    exp_clip_adv = torch.exp(torch.clip((to_scalar_3D(batch_lookahead_r1) + 0.997*to_scalar_3D(batch_lookahead_v1) - to_scalar(t_v_logits).repeat(params['action_space'], 1, 1))/under, -1,1))
+                    exp_clip_adv = torch.exp(torch.clip((to_scalar_3D(batch_lookahead_r1) + params['discount']*to_scalar_3D(batch_lookahead_v1) - to_scalar(t_v_logits).repeat(params['action_space'], 1, 1))/under, -1,1))
                     
                     ## Paper appendix F.2 : Prior policy
                     t_P = 0.967*t_P + 0.03*P_traj + 0.003*torch.full((params['mb_dim'], params['action_space'] ), 1/params['action_space'], device=device)
@@ -516,7 +513,7 @@ class Agent(nn.Module):
 
 
             ## total loss
-            L_total = L_pg_cmpo + L_v/4 + L_r/1 + L_m   
+            L_total = L_pg_cmpo + L_v*params['value_loss_weight'] + L_r*params['reward_loss_weight'] + L_m   
 
             
             start = time.time()
@@ -575,7 +572,6 @@ target.load_state_dict(agent.state_dict())
 
 ## Self play & Weight update loop
 
-last_game_score = 0
 for i in range(params['expriment_length']):
     #writer = SummaryWriter(logdir='scalar/')
     global_i = i    
@@ -585,7 +581,6 @@ for i in range(params['expriment_length']):
     print(f"selfplay time consume{end - start:.5f} sec")
     #writer.add_scalar('score', game_score, global_i)    
     nni.report_intermediate_result(game_score)
-    last_game_score = game_score
     score_arr.append(game_score)  
     print('episode, score, last_r, len\n', i, int(game_score), last_r, frame)
     
