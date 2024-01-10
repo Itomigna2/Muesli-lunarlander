@@ -28,7 +28,6 @@ params = {
     'action_space': 4,
 
     'stacking_frame': 8,
-    #'zeros_over_episode': 6,
 
     'alpha_target' : 0.01, 
 
@@ -342,12 +341,12 @@ class Agent(nn.Module):
         self.action_replay.append(self.action_traj)
         self.P_replay.append(self.P_traj)
         self.r_replay.append(self.r_traj)  
-
+        '''
         writer.add_scalars('Selfplay',
                            {'lastreward': r,
                            # 'lastframe': last_frame+1
                            },global_i)
-
+        '''
         return game_score , r, last_frame
 
 
@@ -387,9 +386,9 @@ class Agent(nn.Module):
                 G_arr.reverse()
                 
                 for i in np.random.randint(len(self.state_replay[sel])-params['unroll_step']-1-params['stacking_frame']+1,size=1):
-                    state_traj.append(self.state_replay[sel][i:i+params['unroll_step']+params['stacking_frame']]) 
-                    action_traj.append(self.action_replay[sel][i:i+params['unroll_step']])
-                    r_traj.append(self.r_replay[sel][i:i+params['unroll_step']])
+                    state_traj.append(self.state_replay[sel][i:i+params['unroll_step']+1+params['stacking_frame']]) 
+                    action_traj.append(self.action_replay[sel][i:i+params['unroll_step']+1])
+                    r_traj.append(self.r_replay[sel][i:i+params['unroll_step']+1])
                     G_arr_mb.append(G_arr[i:i+params['unroll_step']+1])                        
                     P_traj.append(self.P_replay[sel][i])
 
@@ -414,8 +413,7 @@ class Agent(nn.Module):
             first_P, first_v_logits = self.prediction_network(hs)
             hs.register_hook(lambda grad: grad * 0.5)
             inferenced_P_arr.append(first_P)
-            inferenced_v_logit_arr.append(first_v_logits)
-            
+            inferenced_v_logit_arr.append(first_v_logits)            
 
             for i in range(params['unroll_step']):
                 hs, r_logits = self.dynamics_network(hs, action_traj[:,i])    
@@ -425,28 +423,6 @@ class Agent(nn.Module):
                 inferenced_r_logit_arr.append(r_logits)
                 inferenced_v_logit_arr.append(v_logits)
                 
-
-            '''
-            second_hs, r_logits = self.dynamics_network(first_hs, action_traj[:,0])    
-            second_P, second_v_logits = self.prediction_network(second_hs)
-            inferenced_P_arr.append(second_P)
-
-            third_hs, r2_logits = self.dynamics_network(second_hs, action_traj[:,1])    
-            third_P, third_v_logits = self.prediction_network(third_hs)
-            inferenced_P_arr.append(third_P)
-
-            fourth_hs, r3_logits = self.dynamics_network(third_hs, action_traj[:,2])    
-            fourth_P, fourth_v_logits = self.prediction_network(fourth_hs)
-            inferenced_P_arr.append(fourth_P)
-
-            fifth_hs, r4_logits = self.dynamics_network(fourth_hs, action_traj[:,3])    
-            fifth_P, fifth_v_logits = self.prediction_network(fifth_hs)
-            inferenced_P_arr.append(fifth_P)
-
-            sixth_hs, r5_logits = self.dynamics_network(fifth_hs, action_traj[:,4])    
-            sixth_P, sixth_v_logits = self.prediction_network(sixth_hs)
-            inferenced_P_arr.append(sixth_P)
-            '''
             end = time.time()
             print(f"unroll time consume {end - start:.5f} sec")
 
@@ -470,8 +446,6 @@ class Agent(nn.Module):
                                         0, 1
             )
             first_term = -1 * importance_weight * (G_arr_mb[:,0] - to_scalar(t_first_v_logits))/under        
-
-
 
 
             ## second_term(exact KL) + L_m
@@ -511,64 +485,38 @@ class Agent(nn.Module):
                     second_term = kl_loss(torch.log(inferenced_P_arr[i]), pi_cmpo_all)
                 else:
                     L_m += kl_loss(torch.log(inferenced_P_arr[i]), pi_cmpo_all) 
-            L_m/=params['unroll_step']
+
+            if params['unroll_step'] > 0:
+                L_m/=params['unroll_step']
 
             end = time.time()
             print(f"L_m time consume {end - start:.5f} sec")
-            
             
             
             ## L_pg_cmpo               
             L_pg_cmpo = first_term + params['regularizer_multiplier'] * second_term
             
             
-            ## L_v
-            ls = nn.LogSoftmax(dim=-1)
-
-            ## pytorch 내장메소드로 바꾸기
-            L_v = 0
-            for i in range(params['unroll_step']+1):
-                L_v += (to_cr(G_arr_mb[:,i])*ls(inferenced_v_logit_arr[i])).sum(-1, keepdim=True)
-            L_v *= -1
-
-            L_r = 0
-            for i in range(params['unroll_step']):
-                L_r += (to_cr(r_traj[:,i])*ls(inferenced_r_logit_arr[i])).sum(-1, keepdim=True)
-            L_r *= -1
-
+            ## L_v, L_r
             
-            '''
-            L_v = -1 * (
-                (to_cr(G_arr_mb[:,0])*ls(inferenced_v_logit_arr[0])).sum(-1, keepdim=True)
-                +  (to_cr(G_arr_mb[:,1])*ls(second_v_logits)).sum(-1, keepdim=True)
-                +  (to_cr(G_arr_mb[:,2])*ls(third_v_logits)).sum(-1, keepdim=True)
-                +  (to_cr(G_arr_mb[:,3])*ls(fourth_v_logits)).sum(-1, keepdim=True)
-                +  (to_cr(G_arr_mb[:,4])*ls(fifth_v_logits)).sum(-1, keepdim=True)
-                +  (to_cr(G_arr_mb[:,5])*ls(sixth_v_logits)).sum(-1, keepdim=True)
-            )
+            L_v = 0
+            L_r = 0
 
-            ## L_r     
-            L_r = -1 * (
-                (to_cr(r_traj[:,0])*ls(r_logits)).sum(-1, keepdim=True)
-                + (to_cr(r_traj[:,1])*ls(r2_logits)).sum(-1, keepdim=True)
-                + (to_cr(r_traj[:,2])*ls(r3_logits)).sum(-1, keepdim=True)
-                + (to_cr(r_traj[:,3])*ls(r4_logits)).sum(-1, keepdim=True)
-                + (to_cr(r_traj[:,4])*ls(r5_logits)).sum(-1, keepdim=True)
-            )
-            '''
+            CEloss = nn.CrossEntropyLoss(reduction='none')
+            
+            for i in range(params['unroll_step']+1):
+                L_v += CEloss(inferenced_v_logit_arr[i], to_cr(G_arr_mb[:,i])).unsqueeze(-1)
+            
+            for i in range(params['unroll_step']):
+                L_r += CEloss(inferenced_r_logit_arr[i], to_cr(r_traj[:,i])).unsqueeze(-1)
 
-            '''
-            ## start of dynamics network gradient *0.5
-            first_hs.register_hook(lambda grad: grad * 0.5)
-            second_hs.register_hook(lambda grad: grad * 0.5) 
-            third_hs.register_hook(lambda grad: grad * 0.5)    
-            fourth_hs.register_hook(lambda grad: grad * 0.5)   
-            fifth_hs.register_hook(lambda grad: grad * 0.5)  
-            sixth_hs.register_hook(lambda grad: grad * 0.5)  
-            '''
+            L_v /= params['unroll_step']+1
+            if params['unroll_step'] > 0:
+                L_r /= params['unroll_step']
+
 
             ## total loss
-            L_total = L_pg_cmpo + L_v/6/4 + L_r/5/1 + L_m   
+            L_total = L_pg_cmpo + L_v/4 + L_r/1 + L_m   
 
             
             start = time.time()
@@ -594,7 +542,7 @@ class Agent(nn.Module):
 
         self.scheduler.step()
 
-
+        '''
         writer.add_scalars('Loss',{'L_total': L_total.mean(),
                                   'L_pg_cmpo': L_pg_cmpo.mean(),
                                   'L_v': (L_v/6/4).mean(),
@@ -605,6 +553,7 @@ class Agent(nn.Module):
         writer.add_scalars('vars',{'self.var':self.var,
                                    'self.var_m':self.var_m[0]
                                   },global_i)
+        '''
         
         return
 
@@ -628,13 +577,13 @@ target.load_state_dict(agent.state_dict())
 
 last_game_score = 0
 for i in range(params['expriment_length']):
-    writer = SummaryWriter(logdir='scalar/')
+    #writer = SummaryWriter(logdir='scalar/')
     global_i = i    
     start = time.time()
     game_score , last_r, frame = agent.self_play_mu(target)       
     end = time.time()
     print(f"selfplay time consume{end - start:.5f} sec")
-    writer.add_scalar('score', game_score, global_i)    
+    #writer.add_scalar('score', game_score, global_i)    
     nni.report_intermediate_result(game_score)
     last_game_score = game_score
     score_arr.append(game_score)  
@@ -643,19 +592,22 @@ for i in range(params['expriment_length']):
     if i%100==0:
         torch.save(target.state_dict(), 'weights_target.pt') 
 
-    if game_score > 250 and np.mean(np.array(score_arr[-20:])) > 250:
+    if game_score > 220 and np.mean(np.array(score_arr[-20:])) > 220:
         torch.save(target.state_dict(), 'weights_target.pt') 
         print('Done')
+        nni.report_final_result(game_score)
         break
     start = time.time()
     agent.update_weights_mu(target) 
     end = time.time()
     print(f"update time consume {end - start:.5f} sec")
-    writer.close()
+    #writer.close()
 
-nni.report_final_result(game_score)
+#nni.report_final_result(game_score)
 torch.save(target.state_dict(), 'weights_target.pt')  
 agent.env.close()
+
+
 
 '''
 ## Earned score per episode

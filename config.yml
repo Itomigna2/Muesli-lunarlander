@@ -23,13 +23,13 @@ searchSpace:
     _value: [128]
   unroll_step:
     _type: choice
-    _value: [1,3,5,10]
+    _value: [0,1,3,5,10]
 
 
     
 trialCommand: python Muesli_LunarLander.py
 trialGpuNumber: 1
-trialConcurrency: 20
+trialConcurrency: 10
 maxTrialNumber: 100
 tuner:
   name: TPE
