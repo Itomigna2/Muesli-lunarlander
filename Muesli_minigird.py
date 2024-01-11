@@ -5,6 +5,8 @@ from tensorboardX import SummaryWriter
 import gymnasium as gym
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -12,8 +14,8 @@ print(torch.cuda.is_available())
 
 import nni
 params = {
-    'game_name': 'LunarLander-v2', 
-    'env_observation_space': 8,
+    'game_name': "MiniGrid-BlockedUnlockPickup-v0",  #'LunarLander-v2', 
+    #'env_observation_space': 8,
     'action_space': 4,
     
     'regularizer_multiplier': 1,
@@ -38,6 +40,10 @@ params = {
     'eps_var': 1e-12,
 
     'hs_resolution': 36,
+
+    #input_channels: rgb 3 (* stacking frame) (representation network)
+    #actor_max_epi_len
+    #bn?
         
     
 }
@@ -62,6 +68,7 @@ class Representation(nn.Module):
     input : raw input
     output : hs(hidden state) 
     """
+    '''
     def __init__(self, input_dim, output_dim, width):
         super().__init__()
         self.skip = torch.nn.Linear(input_dim, output_dim)  
@@ -85,7 +92,23 @@ class Representation(nn.Module):
         x = torch.nn.functional.relu(x+s)
         x = 2*(x - x.min(-1,keepdim=True)[0])/(x.max(-1,keepdim=True)[0] - x.min(-1,keepdim=True)[0])-1 
         return x
+    '''
+    def __init__(self, input_channels, hidden_size, width):
+        super().__init__()
+        self.conv1 = nn.Conv2d(input_channels, 16, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.fc = nn.Linear(7*7 * 64, hidden_size)
 
+    def forward(self, x):
+        x = x.div(255.0).float()
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = torch.flatten(x, start_dim=1)
+        x = F.relu(self.fc(x))
+        x = (x - x.min(-1,keepdim=True)[0])/(x.max(-1,keepdim=True)[0] - x.min(-1,keepdim=True)[0])
+        return x
 
 class Dynamics(nn.Module): 
     """Dynamics Network
@@ -138,7 +161,7 @@ class Dynamics(nn.Module):
             hs = self.hs_head(x)
             hs = torch.nn.functional.relu(hs)
             reward = self.reward_head(x)    
-            hs = 2*(hs - hs.min(-1,keepdim=True)[0])/(hs.max(-1,keepdim=True)[0] - hs.min(-1,keepdim=True)[0])-1
+            hs = (hs - hs.min(-1,keepdim=True)[0])/(hs.max(-1,keepdim=True)[0] - hs.min(-1,keepdim=True)[0])
         return hs, reward
 
 
@@ -241,9 +264,9 @@ class Target(nn.Module):
     Target network is used to approximate v_pi_prior, q_pi_prior, pi_prior.
     It contains older network parameters. (exponential moving average update)
     """
-    def __init__(self, state_dim, action_dim, width):
+    def __init__(self, action_dim, width):
         super().__init__()
-        self.representation_network = Representation(state_dim*params['stacking_frame'], params['hs_resolution'], width) 
+        self.representation_network = Representation(params['stacking_frame']*3, params['hs_resolution'], width) 
         self.dynamics_network = Dynamics(params['hs_resolution'], params['hs_resolution'], width)
         self.prediction_network = Prediction(params['hs_resolution'], width)  
         self.to(device)
@@ -252,9 +275,9 @@ class Target(nn.Module):
 ##Muesli agent
 class Agent(nn.Module):
     """Agent Class"""
-    def __init__(self, state_dim, action_dim, width):
+    def __init__(self, action_dim, width):
         super().__init__()
-        self.representation_network = Representation(state_dim*params['stacking_frame'], params['hs_resolution'], width) 
+        self.representation_network = Representation(params['stacking_frame']*3, params['hs_resolution'], width) 
         self.dynamics_network = Dynamics(params['hs_resolution'], params['hs_resolution'], width)
         self.prediction_network = Prediction(params['hs_resolution'], width) 
         self.optimizer = torch.optim.AdamW(self.parameters(), lr=params['start_lr'], weight_decay=0)
@@ -292,27 +315,32 @@ class Agent(nn.Module):
         game_score = 0
         last_frame = 1000
         state = self.env.reset()
-        state = state[0]
-        state_dim = len(state)
+        state = state[0]['image'].transpose(2,0,1)
+        
         for i in range(max_timestep):   
-            start_state = state
+            input_state = state
+            
             if i == 0:
-                stacked_state = np.tile(state, params['stacking_frame'])
+                stacked_state = np.tile(input_state, (params['stacking_frame'], 1, 1))
             else:
-                stacked_state = np.roll(stacked_state,-state_dim,axis=0)                
-                stacked_state[-state_dim:]=state
-
+                stacked_state = np.roll(stacked_state, shift=-1 ,axis=0)
+                stacked_state[-3:]=state
+            
             with torch.no_grad():
-                hs = target.representation_network(torch.from_numpy(stacked_state).float().to(device))
+                hs = target.representation_network(torch.from_numpy(stacked_state).float().unsqueeze(0).to(device))
                 P, v = target.prediction_network(hs)    
+                P = P.squeeze(0)
+            
             action = np.random.choice(np.arange(params['action_space'] ), p=P.detach().cpu().numpy())   
-            state, r, done, info, _ = self.env.step(action)                    
+            state, r, done, info, _ = self.env.step(action)   
+
+            state = state['image'].transpose(2,0,1)
             
             if i == 0:
                 for _ in range(params['stacking_frame']):
-                    self.state_traj.append(start_state)                
+                    self.state_traj.append(input_state)                
             else:
-                self.state_traj.append(start_state)
+                self.state_traj.append(input_state)
             self.action_traj.append(action)
             self.P_traj.append(P.cpu().numpy())
             self.r_traj.append(r)
@@ -400,8 +428,11 @@ class Agent(nn.Module):
             inferenced_v_logit_arr = []
 
             ## stacking 8 frame
+
+            
             stacked_state_0 = torch.cat([state_traj[:, i] for i in range(params['stacking_frame'])], dim=1)
 
+            
 
             start = time.time()
             ## agent network inference (5 step unroll)
@@ -562,8 +593,8 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 print(device)
 score_arr = []
 
-target = Target(params['env_observation_space'], params['action_space'] , params['mlp_width'])
-agent = Agent(params['env_observation_space'], params['action_space'] , params['mlp_width'])  
+target = Target(params['action_space'] , params['mlp_width'])
+agent = Agent(params['action_space'] , params['mlp_width'])  
 print(agent)
 
 
