@@ -1,7 +1,8 @@
 import math
 import time
+import os
 
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import gymnasium as gym
 import torch
 import torch.nn as nn
@@ -542,7 +543,7 @@ class Agent(nn.Module):
 
         self.scheduler.step()
 
-        '''
+        
         writer.add_scalars('Loss',{'L_total': L_total.mean(),
                                   'L_pg_cmpo': L_pg_cmpo.mean(),
                                   'L_v': (L_v/6/4).mean(),
@@ -553,7 +554,7 @@ class Agent(nn.Module):
         writer.add_scalars('vars',{'self.var':self.var,
                                    'self.var_m':self.var_m[0]
                                   },global_i)
-        '''
+        
         
         return
 
@@ -573,10 +574,12 @@ print(agent)
 ## initialization
 target.load_state_dict(agent.state_dict())
 
+log_dir = os.path.join(os.environ["NNI_OUTPUT_DIR"], 'tensorboard')
+
 ## Self play & Weight update loop
 
 for i in range(params['expriment_length']):
-    #writer = SummaryWriter(logdir='scalar/')
+    writer = SummaryWriter(log_dir)
     global_i = i    
     start = time.time()
     game_score , last_r, frame = agent.self_play_mu(target)       

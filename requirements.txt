@@ -1,4 +1,4 @@
-tensorboardX
+tensorboard
 gymnasium[box2d]
 torch
 matplotlib
