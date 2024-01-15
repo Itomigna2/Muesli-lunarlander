@@ -16,6 +16,9 @@ import nni
 params = {
     'game_name': "MiniGrid-Empty-5x5-v0", #"MiniGrid-BlockedUnlockPickup-v0",  #'LunarLander-v2', 
     #'env_observation_space': 8,
+    'input_channels': 3,
+    'input_height': 7,
+    'input_width': 7,
     'action_space': 4,
     
     'regularizer_multiplier': 1,
@@ -72,7 +75,7 @@ class Representation(nn.Module):
         self.conv1 = nn.Conv2d(input_channels, 16, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.fc = nn.Linear(7*7 * 64, hidden_size)
+        self.fc = nn.Linear(params['input_height'] * params['input_width'] * 64, hidden_size)
 
     def forward(self, x):
         x = x.div(255.0).float()
@@ -240,7 +243,7 @@ class Target(nn.Module):
     """
     def __init__(self, action_dim, width):
         super().__init__()
-        self.representation_network = Representation(params['stacking_frame']*3, params['hs_resolution'], width) 
+        self.representation_network = Representation(params['stacking_frame']*params['input_channels'], params['hs_resolution'], width) 
         self.dynamics_network = Dynamics(params['hs_resolution'], params['hs_resolution'], width)
         self.prediction_network = Prediction(params['hs_resolution'], width)  
         self.to(device)
@@ -251,7 +254,7 @@ class Agent(nn.Module):
     """Agent Class"""
     def __init__(self, action_dim, width):
         super().__init__()
-        self.representation_network = Representation(params['stacking_frame']*3, params['hs_resolution'], width) 
+        self.representation_network = Representation(params['stacking_frame']*params['input_channels'], params['hs_resolution'], width) 
         self.dynamics_network = Dynamics(params['hs_resolution'], params['hs_resolution'], width)
         self.prediction_network = Prediction(params['hs_resolution'], width) 
         self.optimizer = torch.optim.AdamW(self.parameters(), lr=params['start_lr'], weight_decay=0)
