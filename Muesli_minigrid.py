@@ -14,7 +14,7 @@ print(torch.cuda.is_available())
 
 import nni
 params = {
-    'game_name': "MiniGrid-Empty-5x5-v0", #"MiniGrid-BlockedUnlockPickup-v0",  #'LunarLander-v2', 
+    'game_name': "MiniGrid-Empty-5x5-v0",# "MiniGrid-Playground-v0", #"MiniGrid-BlockedUnlockPickup-v0",
     #'env_observation_space': 8,
     'input_channels': 3,
     'input_height': 7,
@@ -309,7 +309,7 @@ class Agent(nn.Module):
                 P = P.squeeze(0)
             
             action = np.random.choice(np.arange(params['action_space'] ), p=P.detach().cpu().numpy())   
-            state, r, done, info, _ = self.env.step(action)   
+            state, r, terminated, truncated, _ = self.env.step(action)   
             state = state['image'].transpose(2,0,1)
             
             self.action_traj.append(action)
@@ -318,7 +318,7 @@ class Agent(nn.Module):
             
             game_score += r
 
-            if done:
+            if terminated or truncated:
                 last_frame = i
                 print(last_frame)
                 break
