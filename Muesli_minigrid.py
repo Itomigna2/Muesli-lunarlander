@@ -45,7 +45,6 @@ params = {
 
     'hs_resolution': 36,
 
-    #input_channels: rgb 3 (* stacking frame) (representation network)
     #actor_max_epi_len ~ 100
     #bn?
         
@@ -128,7 +127,7 @@ class Dynamics(nn.Module):
             reward = self.reward_head(x)    
             hs = (hs - hs.min(-1,keepdim=True)[0])/(hs.max(-1,keepdim=True)[0] - hs.min(-1,keepdim=True)[0])
         if(action.dim()==3):
-            action = torch.nn.functional.one_hot(action.to(torch.int64), num_classes=4)
+            action = torch.nn.functional.one_hot(action.to(torch.int64), num_classes=params['action_space'])
             action = action.squeeze(2)
             x = torch.cat((x,action.to(device)), dim=2)
             x = self.layer1(x)
@@ -294,13 +293,14 @@ class Agent(nn.Module):
         state = self.env.reset()
         state = state[0]['image'].transpose(2,0,1)
         
-        for i in range(max_timestep):   
-            input_state = state
-            
+        for i in range(max_timestep):
             if i == 0:
-                stacked_state = np.tile(input_state, (params['stacking_frame'], 1, 1))
+                for _ in range(params['stacking_frame']):
+                    self.state_traj.append(state)      
+                stacked_state = np.tile(state, (params['stacking_frame'], 1, 1))
             else:
-                stacked_state = np.roll(stacked_state, shift=-1 ,axis=0)
+                self.state_traj.append(state)
+                stacked_state = np.roll(stacked_state, shift=-3 ,axis=0)
                 stacked_state[-3:]=state
             
             with torch.no_grad():
@@ -310,14 +310,8 @@ class Agent(nn.Module):
             
             action = np.random.choice(np.arange(params['action_space'] ), p=P.detach().cpu().numpy())   
             state, r, done, info, _ = self.env.step(action)   
-
             state = state['image'].transpose(2,0,1)
             
-            if i == 0:
-                for _ in range(params['stacking_frame']):
-                    self.state_traj.append(input_state)                
-            else:
-                self.state_traj.append(input_state)
             self.action_traj.append(action)
             self.P_traj.append(P.cpu().numpy())
             self.r_traj.append(r)
