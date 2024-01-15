@@ -14,7 +14,7 @@ print(torch.cuda.is_available())
 
 import nni
 params = {
-    'game_name': "MiniGrid-BlockedUnlockPickup-v0",  #'LunarLander-v2', 
+    'game_name': "MiniGrid-Empty-5x5-v0", #"MiniGrid-BlockedUnlockPickup-v0",  #'LunarLander-v2', 
     #'env_observation_space': 8,
     'action_space': 4,
     
@@ -33,6 +33,7 @@ params = {
     'eps': 0.001,
 
     'alpha_target': 0.01, # 0.1 ??
+    'policy_loss_weight': 3,
     'value_loss_weight': 0.25,
     'reward_loss_weight': 1,
     
@@ -42,16 +43,14 @@ params = {
     'hs_resolution': 36,
 
     #input_channels: rgb 3 (* stacking frame) (representation network)
-    #actor_max_epi_len
+    #actor_max_epi_len ~ 100
     #bn?
         
     
 }
 
-
 optimized_params = nni.get_next_parameter()
 params.update(optimized_params)
-
 
 ## For linear lr decay
 ## https://github.com/cmpark0126/pytorch-polynomial-lr-decay
@@ -68,31 +67,6 @@ class Representation(nn.Module):
     input : raw input
     output : hs(hidden state) 
     """
-    '''
-    def __init__(self, input_dim, output_dim, width):
-        super().__init__()
-        self.skip = torch.nn.Linear(input_dim, output_dim)  
-        self.layer1 = torch.nn.Linear(input_dim, width)
-        self.layer2 = torch.nn.Linear(width, width)
-        self.layer3 = torch.nn.Linear(width, width) 
-        self.layer4 = torch.nn.Linear(width, width)  
-        self.layer5 = torch.nn.Linear(width, output_dim)     
-        
-    def forward(self, x):
-        s = self.skip(x)
-        x = self.layer1(x)
-        x = torch.nn.functional.relu(x)
-        x = self.layer2(x)
-        x = torch.nn.functional.relu(x)
-        x = self.layer3(x)
-        x = torch.nn.functional.relu(x)
-        x = self.layer4(x)
-        x = torch.nn.functional.relu(x)
-        x = self.layer5(x)    
-        x = torch.nn.functional.relu(x+s)
-        x = 2*(x - x.min(-1,keepdim=True)[0])/(x.max(-1,keepdim=True)[0] - x.min(-1,keepdim=True)[0])-1 
-        return x
-    '''
     def __init__(self, input_channels, hidden_size, width):
         super().__init__()
         self.conv1 = nn.Conv2d(input_channels, 16, kernel_size=3, padding=1)
@@ -149,7 +123,7 @@ class Dynamics(nn.Module):
             hs = self.hs_head(x)
             hs = torch.nn.functional.relu(hs)
             reward = self.reward_head(x)    
-            hs = 2*(hs - hs.min(-1,keepdim=True)[0])/(hs.max(-1,keepdim=True)[0] - hs.min(-1,keepdim=True)[0])-1
+            hs = (hs - hs.min(-1,keepdim=True)[0])/(hs.max(-1,keepdim=True)[0] - hs.min(-1,keepdim=True)[0])
         if(action.dim()==3):
             action = torch.nn.functional.one_hot(action.to(torch.int64), num_classes=4)
             action = action.squeeze(2)
@@ -349,6 +323,7 @@ class Agent(nn.Module):
 
             if done:
                 last_frame = i
+                print(last_frame)
                 break
 
         #print('self_play: score, r, done, info, lastframe', int(game_score), r, done, info, i)
@@ -544,7 +519,7 @@ class Agent(nn.Module):
 
 
             ## total loss
-            L_total = L_pg_cmpo + L_v*params['value_loss_weight'] + L_r*params['reward_loss_weight'] + L_m   
+            L_total = (L_pg_cmpo + L_m)*params['policy_loss_weight']+ L_v*params['value_loss_weight'] + L_r*params['reward_loss_weight']   
 
             
             start = time.time()
@@ -618,7 +593,7 @@ for i in range(params['expriment_length']):
     if i%100==0:
         torch.save(target.state_dict(), 'weights_target.pt') 
 
-    if game_score > 220 and np.mean(np.array(score_arr[-20:])) > 220:
+    if game_score > 0.9 and np.mean(np.array(score_arr[-20:])) > 0.9:
         torch.save(target.state_dict(), 'weights_target.pt') 
         print('Done')
         nni.report_final_result(game_score)
