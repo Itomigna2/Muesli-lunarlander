@@ -2,21 +2,19 @@ import math
 import time
 import os
 
-from torch.utils.tensorboard import SummaryWriter
 import gymnasium as gym
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from torch.utils.tensorboard import SummaryWriter
+
 import matplotlib.pyplot as plt
 import numpy as np
 
-print(torch.cuda.is_available())
-
 import nni
 params = {
-    'game_name': "MiniGrid-Empty-5x5-v0",# "MiniGrid-Playground-v0", #"MiniGrid-BlockedUnlockPickup-v0",
-    #'env_observation_space': 8,
+    'game_name': "MiniGrid-Empty-5x5-v0", #"MiniGrid-Playground-v0",,# #"MiniGrid-BlockedUnlockPickup-v0",
     'input_channels': 3,
     'input_height': 7,
     'input_width': 7,
@@ -339,12 +337,12 @@ class Agent(nn.Module):
         self.action_replay.append(self.action_traj)
         self.P_replay.append(self.P_traj)
         self.r_replay.append(self.r_traj)  
-        '''
+        
         writer.add_scalars('Selfplay',
                            {'lastreward': r,
-                           # 'lastframe': last_frame+1
+                            'lastframe': last_frame+1
                            },global_i)
-        '''
+        
         return game_score , r, last_frame
 
 
@@ -558,10 +556,8 @@ class Agent(nn.Module):
         
         return
 
-#%rm -rf scalar/
-#%load_ext tensorboard
-#%tensorboard --logdir scalar --port=6010
 
+print(torch.cuda.is_available())
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 print(device)
 score_arr = []
@@ -574,18 +570,24 @@ print(agent)
 ## initialization
 target.load_state_dict(agent.state_dict())
 
-log_dir = os.path.join(os.environ["NNI_OUTPUT_DIR"], 'tensorboard')
+#log_dir = os.path.join(os.environ["NNI_OUTPUT_DIR"], 'tensorboard')
+#print(os.environ["NNI_OUTPUT_DIR"])
+
+log_dir = os.path.join(os.environ["PWD"], 'nni-experiments', os.environ["NNI_EXP_ID"], 'trials', os.environ["NNI_TRIAL_JOB_ID"], 'output/tensorboard')
+
+#print(log_dir)
+#print(os.environ)
 
 ## Self play & Weight update loop
 
-for i in range(params['expriment_length']):
+for i in range(params['expriment_length']): 
     writer = SummaryWriter(log_dir)
     global_i = i    
     start = time.time()
     game_score , last_r, frame = agent.self_play_mu(target)       
     end = time.time()
     print(f"selfplay time consume{end - start:.5f} sec")
-    #writer.add_scalar('score', game_score, global_i)    
+    writer.add_scalar('score', game_score, global_i)    
     nni.report_intermediate_result(game_score)
     score_arr.append(game_score)  
     print('episode, score, last_r, len\n', i, int(game_score), last_r, frame)
@@ -602,7 +604,7 @@ for i in range(params['expriment_length']):
     agent.update_weights_mu(target) 
     end = time.time()
     print(f"update time consume {end - start:.5f} sec")
-    #writer.close()
+    writer.close()
 
 #nni.report_final_result(game_score)
 torch.save(target.state_dict(), 'weights_target.pt')  

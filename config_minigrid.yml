@@ -42,8 +42,7 @@ searchSpace:
     _type: choice
     _value: [0.1, 0.01]
 
-
-    
+experimentWorkingDirectory: ./nni-experiments
 trialCommand: python Muesli_minigrid.py
 trialGpuNumber: 1
 trialConcurrency: 10
