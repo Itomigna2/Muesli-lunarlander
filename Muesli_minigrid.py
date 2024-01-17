@@ -1,6 +1,7 @@
 import math
 import time
 import os
+import argparse
 
 import gymnasium as gym
 import torch
@@ -342,7 +343,7 @@ class Agent(nn.Module):
 
             if terminated or truncated:
                 last_frame = i
-                print(last_frame)
+                #print(last_frame)
                 break
 
         #print('self_play: score, r, done, info, lastframe', int(game_score), r, done, info, i)
@@ -361,10 +362,9 @@ class Agent(nn.Module):
         self.P_replay.append(self.P_traj)
         self.r_replay.append(self.r_traj)  
         
-        writer.add_scalars('Selfplay',
-                           {'lastreward': r,
-                            'lastframe': last_frame+1
-                           },global_i)
+        writer.add_scalar('Selfplay/score', game_score, global_i)
+        writer.add_scalar('Selfplay/last_reward', r, global_i)
+        writer.add_scalar('Selfplay/last_frame', last_frame, global_i)
         
         return game_score , r, last_frame
 
@@ -422,14 +422,9 @@ class Agent(nn.Module):
             inferenced_v_logit_arr = []
 
             ## stacking 8 frame
-
-            
             stacked_state_0 = torch.cat([state_traj[:, i] for i in range(params['stacking_frame'])], dim=1)
-
-            
-
-            ## agent network inference (5 step unroll)
-            
+    
+            ## agent network inference (5 step unroll)            
             hs = self.representation_network(stacked_state_0)
             first_P, first_v_logits = self.prediction_network(hs)
             hs.register_hook(lambda grad: grad * 0.5)
@@ -444,12 +439,10 @@ class Agent(nn.Module):
                 inferenced_r_logit_arr.append(r_logits)
                 inferenced_v_logit_arr.append(v_logits)
 
-
             ## target network inference
             with torch.no_grad():
                 t_first_hs = target.representation_network(stacked_state_0)
                 t_first_P, t_first_v_logits = target.prediction_network(t_first_hs)  
-
 
             ## normalized advantage
             beta_var = params['beta_var']
@@ -458,14 +451,12 @@ class Agent(nn.Module):
             var_hat = self.var/(1-self.beta_product)
             under = torch.sqrt(var_hat + params['eps_var'])
 
-
             ## L_pg_cmpo first term (eq.10)
             importance_weight = torch.clip(first_P.gather(1,action_traj[:,0])
                                         /(P_traj.gather(1,action_traj[:,0])),
                                         0, 1
             )
             first_term = -1 * importance_weight * (G_arr_mb[:,0] - to_scalar(t_first_v_logits))/under        
-
 
             ## second_term(exact KL) + L_m
 
@@ -508,7 +499,8 @@ class Agent(nn.Module):
             if params['unroll_step'] > 0:
                 L_m/=params['unroll_step']
 
-
+            
+            #writer.add_scalar(f"adv_norm/var_m[{i}]", self.var_m[i], idx)
             
             
             ## L_pg_cmpo               
@@ -559,16 +551,18 @@ class Agent(nn.Module):
 
         
         writer.add_scalars('Loss',{'L_total': L_total.mean(),
-                                  'L_pg_cmpo': L_pg_cmpo.mean(),
+                                  'L_pg_cmpo': (L_pg_cmpo*params['policy_loss_weight']).mean(),
+                                  'L_m': (L_m*params['policy_loss_weight']).mean(),
                                   'L_v': (L_v*params['value_loss_weight']).mean(),
-                                  'L_r': (L_r*params['reward_loss_weight']).mean(),
-                                  'L_m': (L_m).mean()
+                                  'L_r': (L_r*params['reward_loss_weight']).mean()
                                   },global_i)
-        
-        writer.add_scalars('vars',{'self.var':self.var
-                                   #'self.var_m':self.var_m[0]
-                                  },global_i)
-        
+
+
+        for i in range(params['unroll_step']+1):
+            writer.add_scalar(f"adv_norm/var_m[{i}]", self.var_m[i], global_i)
+            #writer.add_scalar(f"Time/{self.name}", duration, global_i)
+
+        #writer.add_histogram('Norm_adv/var', np.array(self.var_m), global_i)
         
         return
 
@@ -582,15 +576,18 @@ target = Target(params['action_space'] , params['mlp_width'])
 agent = Agent(params['action_space'] , params['mlp_width'])  
 print(agent)
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--debug', action='store_true')
+args = parser.parse_args()
+print("args", args.debug, type(args.debug))
 
-#log_dir = os.path.join(os.environ["NNI_OUTPUT_DIR"], 'tensorboard')
-#print(os.environ["NNI_OUTPUT_DIR"])
+if args.debug:
+    writer = SummaryWriter()
+else:
+    log_dir = os.path.join(os.environ["PWD"], 'nni-experiments', os.environ["NNI_EXP_ID"], 'trials', os.environ["NNI_TRIAL_JOB_ID"], 'output/tensorboard')
+    writer = SummaryWriter(log_dir)
 
-log_dir = os.path.join(os.environ["PWD"], 'nni-experiments', os.environ["NNI_EXP_ID"], 'trials', os.environ["NNI_TRIAL_JOB_ID"], 'output/tensorboard')
-writer = SummaryWriter(log_dir)
 
-#print(log_dir)
-#print(os.environ)
 
 
 ## initialization
@@ -624,6 +621,13 @@ writer.close()
 start = time.time()
 end = time.time()
 print(f"L_m time consume {end - start:.5f} sec")
+'''
+
+
+'''
+#log_dir = os.path.join(os.environ["NNI_OUTPUT_DIR"], 'tensorboard')
+#print(os.environ["NNI_OUTPUT_DIR"])
+#print(os.environ)
 '''
 
 
