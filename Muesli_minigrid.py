@@ -46,6 +46,7 @@ params = {
 
     #actor_max_epi_len ~ 100
     #bn?
+    #success threshold
         
     
 }
@@ -232,6 +233,26 @@ def to_cr(x):
     return logits.squeeze(0)
 
 
+class debug_time:
+    """execution time checker
+    
+    with debug_time("My Custom Block", index):
+        # code block to measure
+    """
+    def __init__(self, name="", global_i=0):
+        self.name = name
+        self.global_i = global_i
+
+    def __enter__(self):
+        self.start_time = time.time()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        end_time = time.time()
+        duration = end_time - self.start_time
+        writer.add_scalar(f"Time/{self.name}", duration, global_i)
+
+
 ##Target network
 class Target(nn.Module):
     """Target Network
@@ -405,7 +426,6 @@ class Agent(nn.Module):
 
             
 
-            start = time.time()
             ## agent network inference (5 step unroll)
             
             hs = self.representation_network(stacked_state_0)
@@ -421,9 +441,7 @@ class Agent(nn.Module):
                 inferenced_P_arr.append(P)            
                 inferenced_r_logit_arr.append(r_logits)
                 inferenced_v_logit_arr.append(v_logits)
-                
-            end = time.time()
-            print(f"unroll time consume {end - start:.5f} sec")
+
 
             ## target network inference
             with torch.no_grad():
@@ -448,7 +466,7 @@ class Agent(nn.Module):
 
 
             ## second_term(exact KL) + L_m
-            start = time.time()
+
             L_m = 0      
             for i in range(params['unroll_step']+1):
                 with torch.no_grad():
@@ -488,8 +506,7 @@ class Agent(nn.Module):
             if params['unroll_step'] > 0:
                 L_m/=params['unroll_step']
 
-            end = time.time()
-            print(f"L_m time consume {end - start:.5f} sec")
+
             
             
             ## L_pg_cmpo               
@@ -518,14 +535,11 @@ class Agent(nn.Module):
             L_total = (L_pg_cmpo + L_m)*params['policy_loss_weight']+ L_v*params['value_loss_weight'] + L_r*params['reward_loss_weight']   
 
             
-            start = time.time()
             ## optimize
             self.optimizer.zero_grad()
             L_total.mean().backward()
             nn.utils.clip_grad_value_(self.parameters(), clip_value=1.0)
             self.optimizer.step()
-            end = time.time()
-            print(f"optimize time consume {end - start:.5f} sec")
             
 
             ## target network(prior parameters) moving average update
@@ -544,13 +558,13 @@ class Agent(nn.Module):
         
         writer.add_scalars('Loss',{'L_total': L_total.mean(),
                                   'L_pg_cmpo': L_pg_cmpo.mean(),
-                                  'L_v': (L_v/6/4).mean(),
-                                  'L_r': (L_r/5/1).mean(),
+                                  'L_v': (L_v*params['value_loss_weight']).mean(),
+                                  'L_r': (L_r*params['reward_loss_weight']).mean(),
                                   'L_m': (L_m).mean()
                                   },global_i)
         
-        writer.add_scalars('vars',{'self.var':self.var,
-                                   'self.var_m':self.var_m[0]
+        writer.add_scalars('vars',{'self.var':self.var
+                                   #'self.var_m':self.var_m[0]
                                   },global_i)
         
         
@@ -567,49 +581,48 @@ agent = Agent(params['action_space'] , params['mlp_width'])
 print(agent)
 
 
-## initialization
-target.load_state_dict(agent.state_dict())
-
 #log_dir = os.path.join(os.environ["NNI_OUTPUT_DIR"], 'tensorboard')
 #print(os.environ["NNI_OUTPUT_DIR"])
 
 log_dir = os.path.join(os.environ["PWD"], 'nni-experiments', os.environ["NNI_EXP_ID"], 'trials', os.environ["NNI_TRIAL_JOB_ID"], 'output/tensorboard')
+writer = SummaryWriter(log_dir)
 
 #print(log_dir)
 #print(os.environ)
 
+
+## initialization
+target.load_state_dict(agent.state_dict())
+
 ## Self play & Weight update loop
 
 for i in range(params['expriment_length']): 
-    writer = SummaryWriter(log_dir)
-    global_i = i    
-    start = time.time()
-    game_score , last_r, frame = agent.self_play_mu(target)       
-    end = time.time()
-    print(f"selfplay time consume{end - start:.5f} sec")
-    writer.add_scalar('score', game_score, global_i)    
+    global_i = i            
+    with debug_time("selfplay_time", global_i):
+        game_score , last_r, frame = agent.self_play_mu(target)       
     nni.report_intermediate_result(game_score)
-    score_arr.append(game_score)  
-    print('episode, score, last_r, len\n', i, int(game_score), last_r, frame)
-    
-    if i%100==0:
-        torch.save(target.state_dict(), 'weights_target.pt') 
-
+    score_arr.append(game_score)      
     if game_score > 0.9 and np.mean(np.array(score_arr[-20:])) > 0.9:
-        torch.save(target.state_dict(), 'weights_target.pt') 
-        print('Done')
+        print('Successfully learned')
         nni.report_final_result(game_score)
         break
-    start = time.time()
-    agent.update_weights_mu(target) 
-    end = time.time()
-    print(f"update time consume {end - start:.5f} sec")
-    writer.close()
+    with debug_time("weight_update_time", global_i):
+        agent.update_weights_mu(target) 
 
-#nni.report_final_result(game_score)
 torch.save(target.state_dict(), 'weights_target.pt')  
 agent.env.close()
+writer.close()
 
+
+
+
+
+
+'''
+start = time.time()
+end = time.time()
+print(f"L_m time consume {end - start:.5f} sec")
+'''
 
 
 '''
