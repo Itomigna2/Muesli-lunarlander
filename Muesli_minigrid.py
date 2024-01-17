@@ -19,6 +19,8 @@ params = {
     'input_height': 7,
     'input_width': 7,
     'action_space': 4,
+    'actor_max_epi_len': 1000000,
+    'success_threshold': 0.9,
     
     'regularizer_multiplier': 1,
     'mb_dim': 128,
@@ -44,9 +46,9 @@ params = {
 
     'hs_resolution': 36,
 
-    #actor_max_epi_len ~ 100
+
     #bn?
-    #success threshold
+    
         
     
 }
@@ -294,7 +296,7 @@ class Agent(nn.Module):
         self.beta_product_m = [1.0 for _ in range(params['unroll_step']+1)] 
 
 
-    def self_play_mu(self, target, max_timestep=1000):       
+    def self_play_mu(self, target, max_timestep=params['actor_max_epi_len']):       
         """Self-play and save trajectory to replay buffer
 
         Self-play with target network parameter
@@ -602,7 +604,7 @@ for i in range(params['expriment_length']):
         game_score , last_r, frame = agent.self_play_mu(target)       
     nni.report_intermediate_result(game_score)
     score_arr.append(game_score)      
-    if game_score > 0.9 and np.mean(np.array(score_arr[-20:])) > 0.9:
+    if game_score > params['success_threshold'] and np.mean(np.array(score_arr[-20:])) > params['success_threshold']:
         print('Successfully learned')
         nni.report_final_result(game_score)
         break
