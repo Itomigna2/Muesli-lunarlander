@@ -11,6 +11,8 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
 import matplotlib.pyplot as plt
+from PIL import Image
+import PIL.ImageDraw as ImageDraw
 import numpy as np
 
 import nni
@@ -256,6 +258,24 @@ class debug_time:
         writer.add_scalar(f"Time/{self.name}", duration, global_i)
 
 
+def _label_with_episode_number(frame, episode_num, action, reward, probabilities=None):
+    im = Image.fromarray(frame)
+    drawer = ImageDraw.Draw(im)
+
+    if np.mean(im) < 128:
+        text_color = (255,255,255)
+    else:
+        text_color = (0,0,0)
+        
+    drawer.text((im.size[0]/20,im.size[1]/18), f'Epi: {episode_num}   Act: {action}   Rew: {reward}', fill=text_color)
+    if episode_num > 0:        
+        drawer.text((im.size[0]/20,im.size[1]*16/18), f"Pi: {np.array2string(probabilities, formatter={'float': lambda x: f'{x:.2f}'}, separator=', ')}", fill=text_color)
+
+    im = np.array(im)
+
+    return im
+
+
 ##Target network
 class Target(nn.Module):
     """Target Network
@@ -288,7 +308,7 @@ class Agent(nn.Module):
         self.P_replay = []
         self.r_replay = []   
 
-        self.env = gym.make(params['game_name'])
+        self.env = gym.make(params['game_name'], render_mode="rgb_array")   #_list")
                             
         self.var = 0
         self.beta_product = 1.0
@@ -312,9 +332,13 @@ class Agent(nn.Module):
         self.r_traj = []      
 
         game_score = 0
+        action = -1
+        r = -1
         last_frame = 1000
         state = self.env.reset()
         state = state[0]['image'].transpose(2,0,1)
+
+        writer.add_image(f"image/episode_from_selfplay[{global_i}]", _label_with_episode_number(self.env.render(), episode_num=0, action=action, reward=r), 0, dataformats='HWC')
         
         for i in range(max_timestep):
             if i == 0:
@@ -340,6 +364,8 @@ class Agent(nn.Module):
             self.r_traj.append(r)
             
             game_score += r
+
+            writer.add_image(f"image/episode_from_selfplay[{global_i}]", _label_with_episode_number(self.env.render(), episode_num=i+1, action=action, reward=r, probabilities=P.detach().cpu().numpy()), i+1, dataformats='HWC')
 
             if terminated or truncated:
                 last_frame = i
