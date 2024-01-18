@@ -258,22 +258,23 @@ class debug_time:
         writer.add_scalar(f"Time/{self.name}", duration, global_i)
 
 
-def _label_with_episode_number(frame, episode_num, action, reward, probabilities=None):
+def draw_epi_act_rew(frame, episode_num, action, reward, score):
     im = Image.fromarray(frame)
     drawer = ImageDraw.Draw(im)
-
-    if np.mean(im) < 128:
-        text_color = (255,255,255)
-    else:
-        text_color = (0,0,0)
-        
-    drawer.text((im.size[0]/20,im.size[1]/18), f'Epi: {episode_num}   Act: {action}   Rew: {reward}', fill=text_color)
-    if episode_num > 0:        
-        drawer.text((im.size[0]/20,im.size[1]*16/18), f"Pi: {np.array2string(probabilities, formatter={'float': lambda x: f'{x:.2f}'}, separator=', ')}", fill=text_color)
-
+    text_color = (255,255,255)   
+    drawer.text((im.size[0]/20,im.size[1]/18), f'Epi: {episode_num}   Act: {action}   Rew: {reward:.3f}\nScore: {score:.3f}', fill=text_color)
     im = np.array(im)
-
     return im
+
+def draw_pi(frame, probabilities=None):
+    im = Image.fromarray(frame)
+    drawer = ImageDraw.Draw(im)
+    text_color = (255,255,255)        
+    drawer.text((im.size[0]/20,im.size[1]*16/18), f"Pi: {np.array2string(probabilities, formatter={'float': lambda x: f'{x:.2f}'}, separator=', ')}", fill=text_color)
+    im = np.array(im)
+    return im
+
+
 
 
 ##Target network
@@ -308,7 +309,7 @@ class Agent(nn.Module):
         self.P_replay = []
         self.r_replay = []   
 
-        self.env = gym.make(params['game_name'], render_mode="rgb_array")   #_list")
+        self.env = gym.make(params['game_name'], render_mode="rgb_array")
                             
         self.var = 0
         self.beta_product = 1.0
@@ -337,10 +338,10 @@ class Agent(nn.Module):
         last_frame = 1000
         state = self.env.reset()
         state = state[0]['image'].transpose(2,0,1)
-
-        writer.add_image(f"image/episode_from_selfplay[{global_i}]", _label_with_episode_number(self.env.render(), episode_num=0, action=action, reward=r), 0, dataformats='HWC')
         
         for i in range(max_timestep):
+            img = draw_epi_act_rew(self.env.render(), episode_num=i, action=action, reward=r, score=game_score)
+            
             if i == 0:
                 for _ in range(params['stacking_frame']):
                     self.state_traj.append(state)      
@@ -355,6 +356,10 @@ class Agent(nn.Module):
                 P, v = target.prediction_network(hs)    
                 P = P.squeeze(0)
             
+            img = draw_pi(img, P.detach().cpu().numpy())
+            writer.add_image(f"image/episode_from_selfplay[{global_i}]", img, i, dataformats='HWC')
+            
+            
             action = np.random.choice(np.arange(params['action_space'] ), p=P.detach().cpu().numpy())   
             state, r, terminated, truncated, _ = self.env.step(action)   
             state = state['image'].transpose(2,0,1)
@@ -365,11 +370,10 @@ class Agent(nn.Module):
             
             game_score += r
 
-            writer.add_image(f"image/episode_from_selfplay[{global_i}]", _label_with_episode_number(self.env.render(), episode_num=i+1, action=action, reward=r, probabilities=P.detach().cpu().numpy()), i+1, dataformats='HWC')
-
             if terminated or truncated:
                 last_frame = i
-                #print(last_frame)
+                img = draw_epi_act_rew(self.env.render(), episode_num=i+1, action=action, reward=r, score=game_score)
+                writer.add_image(f"image/episode_from_selfplay[{global_i}]", img, i+1, dataformats='HWC')
                 break
 
         #print('self_play: score, r, done, info, lastframe', int(game_score), r, done, info, i)
