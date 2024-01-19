@@ -49,6 +49,8 @@ params = {
 
     'hs_resolution': 36,
 
+    'draw_image': True
+
 
     #bn?
     
@@ -340,7 +342,8 @@ class Agent(nn.Module):
         state = state[0]['image'].transpose(2,0,1)
         
         for i in range(max_timestep):
-            img = draw_epi_act_rew(self.env.render(), episode_num=i, action=action, reward=r, score=game_score)
+            if params['draw_image']:
+                img = draw_epi_act_rew(self.env.render(), episode_num=i, action=action, reward=r, score=game_score)
             
             if i == 0:
                 for _ in range(params['stacking_frame']):
@@ -355,9 +358,10 @@ class Agent(nn.Module):
                 hs = target.representation_network(torch.from_numpy(stacked_state).float().unsqueeze(0).to(device))
                 P, v = target.prediction_network(hs)    
                 P = P.squeeze(0)
-            
-            img = draw_pi(img, P.detach().cpu().numpy())
-            writer.add_image(f"image/episode_from_selfplay[{global_i}]", img, i, dataformats='HWC')
+
+            if params['draw_image']:
+                img = draw_pi(img, P.detach().cpu().numpy())
+                writer.add_image(f"image/episode_from_selfplay[{global_i}]", img, i, dataformats='HWC')
             
             
             action = np.random.choice(np.arange(params['action_space'] ), p=P.detach().cpu().numpy())   
@@ -372,8 +376,9 @@ class Agent(nn.Module):
 
             if terminated or truncated:
                 last_frame = i
-                img = draw_epi_act_rew(self.env.render(), episode_num=i+1, action=action, reward=r, score=game_score)
-                writer.add_image(f"image/episode_from_selfplay[{global_i}]", img, i+1, dataformats='HWC')
+                if params['draw_image']:
+                    img = draw_epi_act_rew(self.env.render(), episode_num=i+1, action=action, reward=r, score=game_score)
+                    writer.add_image(f"image/episode_from_selfplay[{global_i}]", img, i+1, dataformats='HWC')
                 break
 
         #print('self_play: score, r, done, info, lastframe', int(game_score), r, done, info, i)

@@ -42,10 +42,15 @@ searchSpace:
     _type: choice
     _value: [0.1, 0.01]
 
+  #For faster playing, turn off this.
+  draw_image:
+    _type: choice
+    _value: [True]
+
 experimentWorkingDirectory: ./nni-experiments
 trialCommand: python Muesli_minigrid.py
 trialGpuNumber: 1
-trialConcurrency: 10
+trialConcurrency: 3
 maxTrialNumber: 100
 tuner:
   name: TPE
