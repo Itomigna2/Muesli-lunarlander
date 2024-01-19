@@ -49,7 +49,8 @@ params = {
 
     'hs_resolution': 36,
 
-    'draw_image': True
+    'draw_image': True,
+    'draw_per_episode': 10
 
 
     #bn?
@@ -342,7 +343,7 @@ class Agent(nn.Module):
         state = state[0]['image'].transpose(2,0,1)
         
         for i in range(max_timestep):
-            if params['draw_image']:
+            if params['draw_image'] and global_i % params['draw_per_episode'] == 0:
                 img = draw_epi_act_rew(self.env.render(), episode_num=i, action=action, reward=r, score=game_score)
             
             if i == 0:
@@ -359,7 +360,7 @@ class Agent(nn.Module):
                 P, v = target.prediction_network(hs)    
                 P = P.squeeze(0)
 
-            if params['draw_image']:
+            if params['draw_image'] and global_i % params['draw_per_episode'] == 0:
                 img = draw_pi(img, P.detach().cpu().numpy())
                 writer.add_image(f"image/episode_from_selfplay[{global_i}]", img, i, dataformats='HWC')
             
@@ -376,7 +377,7 @@ class Agent(nn.Module):
 
             if terminated or truncated:
                 last_frame = i
-                if params['draw_image']:
+                if params['draw_image'] and global_i % params['draw_per_episode'] == 0:
                     img = draw_epi_act_rew(self.env.render(), episode_num=i+1, action=action, reward=r, score=game_score)
                     writer.add_image(f"image/episode_from_selfplay[{global_i}]", img, i+1, dataformats='HWC')
                 break

@@ -5,7 +5,7 @@ searchSpace:
     _value: [1, 2]
   mb_dim:
     _type: choice
-    _value: [32, 128, 512]
+    _value: [32, 128]
   iteration:
     _type: choice
     _value: [20, 80]
@@ -46,6 +46,10 @@ searchSpace:
   draw_image:
     _type: choice
     _value: [True]
+
+  draw_per_episode:
+    _type: choice
+    _value: [10]
 
 experimentWorkingDirectory: ./nni-experiments
 trialCommand: python Muesli_minigrid.py
