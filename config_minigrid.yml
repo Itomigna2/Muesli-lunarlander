@@ -14,7 +14,7 @@ searchSpace:
     _value: [4]
   stacking_frame:
     _type: choice
-    _value: [8]
+    _value: [8, 32, 64]
   replay_proportion:
     _type: choice
     _value: [75]
@@ -49,12 +49,12 @@ searchSpace:
 
   draw_per_episode:
     _type: choice
-    _value: [10]
+    _value: [50]
 
 experimentWorkingDirectory: ./nni-experiments
 trialCommand: python Muesli_minigrid.py
 trialGpuNumber: 1
-trialConcurrency: 3
+trialConcurrency: 8
 maxTrialNumber: 100
 tuner:
   name: TPE

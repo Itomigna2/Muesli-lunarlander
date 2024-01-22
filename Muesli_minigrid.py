@@ -4,6 +4,8 @@ import os
 import argparse
 
 import gymnasium as gym
+from minigrid.wrappers import RGBImgObsWrapper
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,11 +19,11 @@ import numpy as np
 
 import nni
 params = {
-    'game_name': "MiniGrid-Empty-5x5-v0", #"MiniGrid-Playground-v0",,# #"MiniGrid-BlockedUnlockPickup-v0",
-    'input_channels': 3,
-    'input_height': 7,
-    'input_width': 7,
-    'action_space': 4,
+    'game_name': "MiniGrid-Playground-v0", #"MiniGrid-Empty-5x5-v0", #"MiniGrid-Playground-v0",,# #"MiniGrid-BlockedUnlockPickup-v0",
+    'input_channels': 5, #3,
+    'input_height': 152, #40, #7,
+    'input_width': 152, #40, #7,
+    'action_space': 7, ###4,
     'actor_max_epi_len': 1000000,
     'success_threshold': 0.9,
     
@@ -50,7 +52,7 @@ params = {
     'hs_resolution': 36,
 
     'draw_image': True,
-    'draw_per_episode': 10
+    'draw_per_episode': 50
 
 
     #bn?
@@ -86,6 +88,7 @@ class Representation(nn.Module):
 
     def forward(self, x):
         x = x.div(255.0).float()
+
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
@@ -313,7 +316,9 @@ class Agent(nn.Module):
         self.r_replay = []   
 
         self.env = gym.make(params['game_name'], render_mode="rgb_array")
-                            
+        self.env = RGBImgObsWrapper(self.env)
+
+
         self.var = 0
         self.beta_product = 1.0
 
@@ -339,8 +344,13 @@ class Agent(nn.Module):
         action = -1
         r = -1
         last_frame = 1000
+
         state = self.env.reset()
-        state = state[0]['image'].transpose(2,0,1)
+        state_direction = state[0]['direction']
+        state_direction_plane = np.full((1, params['input_height'], params['input_width']), state_direction/4*255)
+        state_image = state[0]['image'].transpose(2,0,1)        
+        previous_action_plane = np.full((1, params['input_height'], params['input_width']), action/params['action_space']*255)
+        state = np.vstack((state_image, state_direction_plane, previous_action_plane))
         
         for i in range(max_timestep):
             if params['draw_image'] and global_i % params['draw_per_episode'] == 0:
@@ -349,11 +359,11 @@ class Agent(nn.Module):
             if i == 0:
                 for _ in range(params['stacking_frame']):
                     self.state_traj.append(state)      
-                stacked_state = np.tile(state, (params['stacking_frame'], 1, 1))
+                stacked_state = np.tile(state, (params['stacking_frame'], 1, 1))                 
             else:
                 self.state_traj.append(state)
-                stacked_state = np.roll(stacked_state, shift=-3 ,axis=0)
-                stacked_state[-3:]=state
+                stacked_state = np.roll(stacked_state, shift=-1*params['input_channels'] ,axis=0)
+                stacked_state[-1*params['input_channels']:]=state                
             
             with torch.no_grad():
                 hs = target.representation_network(torch.from_numpy(stacked_state).float().unsqueeze(0).to(device))
@@ -363,12 +373,19 @@ class Agent(nn.Module):
             if params['draw_image'] and global_i % params['draw_per_episode'] == 0:
                 img = draw_pi(img, P.detach().cpu().numpy())
                 writer.add_image(f"image/episode_from_selfplay[{global_i}]", img, i, dataformats='HWC')
-            
+
+            #writer.add_image(f"image/wrapped_state[{global_i}]", state_image, i, dataformats='CHW')
             
             action = np.random.choice(np.arange(params['action_space'] ), p=P.detach().cpu().numpy())   
             state, r, terminated, truncated, _ = self.env.step(action)   
-            state = state['image'].transpose(2,0,1)
-            
+
+            state_direction = state['direction']
+            state_direction_plane = np.full((1, params['input_height'], params['input_width']), state_direction/4*255)
+            state_image = state['image'].transpose(2,0,1)
+            previous_action_plane = np.full((1, params['input_height'], params['input_width']), action/params['action_space']*255)
+            state = np.vstack((state_image, state_direction_plane, previous_action_plane))
+
+
             self.action_traj.append(action)
             self.P_traj.append(P.cpu().numpy())
             self.r_traj.append(r)
@@ -615,13 +632,12 @@ print(agent)
 parser = argparse.ArgumentParser()
 parser.add_argument('--debug', action='store_true')
 args = parser.parse_args()
-print("args", args.debug, type(args.debug))
-
 if args.debug:
     writer = SummaryWriter()
 else:
     log_dir = os.path.join(os.environ["PWD"], 'nni-experiments', os.environ["NNI_EXP_ID"], 'trials', os.environ["NNI_TRIAL_JOB_ID"], 'output/tensorboard')
     writer = SummaryWriter(log_dir)
+    print(log_dir)
 
 
 
