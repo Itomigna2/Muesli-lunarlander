@@ -19,11 +19,8 @@ import numpy as np
 
 import nni
 params = {
-    'game_name': "MiniGrid-Playground-v0", #"MiniGrid-Empty-5x5-v0", #"MiniGrid-Playground-v0",,# #"MiniGrid-BlockedUnlockPickup-v0",
-    'input_channels': 5, #3,
-    'input_height': 152, #40, #7,
-    'input_width': 152, #40, #7,
-    'action_space': 7, ###4,
+    'game_name': "MiniGrid-LockedRoom-v0", #"MiniGrid-Playground-v0", #"MiniGrid-Empty-5x5-v0", #"MiniGrid-BlockedUnlockPickup-v0",
+    'use_RGBImgObsWrapper': False 
     'actor_max_epi_len': 500,
     'success_threshold': 0.9,
     
@@ -52,7 +49,9 @@ params = {
     'hs_resolution': 36,
 
     'draw_image': True,
-    'draw_per_episode': 50
+    'draw_per_episode': 50,
+
+
 
 
     #bn?
@@ -290,7 +289,7 @@ class Target(nn.Module):
     Target network is used to approximate v_pi_prior, q_pi_prior, pi_prior.
     It contains older network parameters. (exponential moving average update)
     """
-    def __init__(self, action_dim, width):
+    def __init__(self, width):
         super().__init__()
         self.representation_network = Representation(params['stacking_frame']*params['input_channels'], params['hs_resolution'], width) 
         self.dynamics_network = Dynamics(params['hs_resolution'], params['hs_resolution'], width)
@@ -301,8 +300,16 @@ class Target(nn.Module):
 ##Muesli agent
 class Agent(nn.Module):
     """Agent Class"""
-    def __init__(self, action_dim, width):
+    def __init__(self, width):
         super().__init__()
+
+        self.env = gym.make(params['game_name'], render_mode="rgb_array")
+        if params['use_RGBImgObsWrapper']:
+            self.env = RGBImgObsWrapper(self.env)
+        params['input_height'], params['input_width'], params['input_channels'] = self.env.observation_space['image'].shape        
+        params['input_channels'] += 2 # R, G, B, action plane, directio plane
+        params['action_space'] = self.env.action_space.n
+        
         self.representation_network = Representation(params['stacking_frame']*params['input_channels'], params['hs_resolution'], width) 
         self.dynamics_network = Dynamics(params['hs_resolution'], params['hs_resolution'], width)
         self.prediction_network = Prediction(params['hs_resolution'], width) 
@@ -314,9 +321,6 @@ class Agent(nn.Module):
         self.action_replay = []
         self.P_replay = []
         self.r_replay = []   
-
-        self.env = gym.make(params['game_name'], render_mode="rgb_array")
-        self.env = RGBImgObsWrapper(self.env)
 
         self.var = 0
         self.beta_product = 1.0
@@ -624,8 +628,9 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 print(device)
 score_arr = []
 
-target = Target(params['action_space'] , params['mlp_width'])
-agent = Agent(params['action_space'] , params['mlp_width'])  
+
+agent = Agent(params['mlp_width'])
+target = Target(params['mlp_width'])
 print(agent)
 
 parser = argparse.ArgumentParser()
