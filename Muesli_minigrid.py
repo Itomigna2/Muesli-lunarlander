@@ -26,6 +26,7 @@ params = {
     'success_threshold': 0.9,
     'draw_image': True,
     'draw_per_episode': 50,
+    'use_negative_reward': True,
     
     'regularizer_multiplier': 1,
     'mb_dim': 128,
@@ -393,7 +394,8 @@ class Agent(nn.Module):
 
             self.action_traj.append(action)
             self.P_traj.append(P.cpu().numpy())
-            if i==max_timestep-1 and not terminated:
+            
+            if params['use_negative_reward'] and i==max_timestep-1 and not terminated:
                 r = -1
             self.r_traj.append(r)
             
