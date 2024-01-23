@@ -24,7 +24,7 @@ params = {
     'input_height': 152, #40, #7,
     'input_width': 152, #40, #7,
     'action_space': 7, ###4,
-    'actor_max_epi_len': 1000000,
+    'actor_max_epi_len': 500,
     'success_threshold': 0.9,
     
     'regularizer_multiplier': 1,
@@ -318,7 +318,6 @@ class Agent(nn.Module):
         self.env = gym.make(params['game_name'], render_mode="rgb_array")
         self.env = RGBImgObsWrapper(self.env)
 
-
         self.var = 0
         self.beta_product = 1.0
 
@@ -392,7 +391,7 @@ class Agent(nn.Module):
             
             game_score += r
 
-            if terminated or truncated:
+            if terminated or i==max_timestep-1: # or truncated:
                 last_frame = i
                 if params['draw_image'] and global_i % params['draw_per_episode'] == 0:
                     img = draw_epi_act_rew(self.env.render(), episode_num=i+1, action=action, reward=r, score=game_score)
