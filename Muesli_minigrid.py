@@ -19,10 +19,13 @@ import numpy as np
 
 import nni
 params = {
-    'game_name': "MiniGrid-LockedRoom-v0", #"MiniGrid-Playground-v0", #"MiniGrid-Empty-5x5-v0", #"MiniGrid-BlockedUnlockPickup-v0",
-    'use_RGBImgObsWrapper': False 
-    'actor_max_epi_len': 500,
+    'game_name': "MiniGrid-LockedRoom-v0", #"MiniGrid-LockedRoom-v0", #"MiniGrid-Playground-v0", #"MiniGrid-Empty-5x5-v0", #"MiniGrid-BlockedUnlockPickup-v0",
+    'use_RGBImgObsWrapper': False,
+    'norm_factor': 10.0, # 255.0 for RGB
+    'actor_max_epi_len': 3000,
     'success_threshold': 0.9,
+    'draw_image': True,
+    'draw_per_episode': 50,
     
     'regularizer_multiplier': 1,
     'mb_dim': 128,
@@ -48,8 +51,7 @@ params = {
 
     'hs_resolution': 36,
 
-    'draw_image': True,
-    'draw_per_episode': 50,
+
 
 
 
@@ -86,7 +88,7 @@ class Representation(nn.Module):
         self.fc = nn.Linear(params['input_height'] * params['input_width'] * 64, hidden_size)
 
     def forward(self, x):
-        x = x.div(255.0).float()
+        x = x.div(params['norm_factor']).float()
 
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
@@ -350,9 +352,9 @@ class Agent(nn.Module):
 
         state = self.env.reset()
         state_direction = state[0]['direction']
-        state_direction_plane = np.full((1, params['input_height'], params['input_width']), state_direction/4*255)
+        state_direction_plane = np.full((1, params['input_height'], params['input_width']), state_direction/4*params['norm_factor'])
         state_image = state[0]['image'].transpose(2,0,1)        
-        previous_action_plane = np.full((1, params['input_height'], params['input_width']), action/params['action_space']*255)
+        previous_action_plane = np.full((1, params['input_height'], params['input_width']), action/params['action_space']*params['norm_factor'])
         state = np.vstack((state_image, state_direction_plane, previous_action_plane))
         
         for i in range(max_timestep):
@@ -383,14 +385,16 @@ class Agent(nn.Module):
             state, r, terminated, truncated, _ = self.env.step(action)   
 
             state_direction = state['direction']
-            state_direction_plane = np.full((1, params['input_height'], params['input_width']), state_direction/4*255)
+            state_direction_plane = np.full((1, params['input_height'], params['input_width']), state_direction/4*params['norm_factor'])
             state_image = state['image'].transpose(2,0,1)
-            previous_action_plane = np.full((1, params['input_height'], params['input_width']), action/params['action_space']*255)
+            previous_action_plane = np.full((1, params['input_height'], params['input_width']), action/params['action_space']*params['norm_factor'])
             state = np.vstack((state_image, state_direction_plane, previous_action_plane))
 
 
             self.action_traj.append(action)
             self.P_traj.append(P.cpu().numpy())
+            if i==max_timestep-1 and not terminated:
+                r = -1
             self.r_traj.append(r)
             
             game_score += r
