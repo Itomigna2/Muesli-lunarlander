@@ -21,6 +21,10 @@ searchSpace:
   resize_width:
     _type: choice
     _value: [60, 120]
+
+  stack_action_plane:
+    _type: choice
+    _value: [True, False]
     
 
 

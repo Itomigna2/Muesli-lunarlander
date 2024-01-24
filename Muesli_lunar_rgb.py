@@ -26,8 +26,7 @@ params = {
     'success_threshold': 200, # arbitrary success threshold of game score
     
     'RGB_Wrapper': True, # change vector based state to RGB
-    'stack_action_plane': True, # stack action information plane to RGB state
-    'additional_input_channels': 1, # num of additional planes can be stacked to RGB state, like planes with information about action or direction
+    #'stack_action_plane': True, # stack action information plane to RGB state
     'norm_factor': 255.0, # normalize RGB by /255.0
     'resizing_state': True, # overwrite the H,W related params to resize
 
@@ -63,6 +62,8 @@ params = {
 
     'resize_height': 40, # image resize H
     'resize_width': 60, # image resize W
+
+    'stack_action_plane': True, # stack action information plane to RGB state
     
     ## Params will be assigned by the code
         # params['input_height']
@@ -283,7 +284,9 @@ class Agent(nn.Module):
         params['input_height'], params['input_width'], params['input_channels'] = self.env.observation_space['pixels'].shape    
         if params['resizing_state']:
             params['input_height'], params['input_width'] = params['resize_height'], params['resize_width']
-        params['input_channels'] += params['additional_input_channels']
+
+        if params['stack_action_plane']:
+            params['input_channels'] += 1
         params['action_space'] = self.env.action_space.n
         
         self.representation_network = Representation(params['stacking_frame']*params['input_channels'], params['hs_resolution'], width) 
