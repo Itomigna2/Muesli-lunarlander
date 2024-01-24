@@ -15,47 +15,61 @@ from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 from PIL import Image
 import PIL.ImageDraw as ImageDraw
+import cv2
 import numpy as np
 
 import nni
 params = {
-    'game_name': 'LunarLander-v2',
-    'use_RGBImgObsWrapper': True,
-    'norm_factor': 255.0, #10.0, # 255.0 for RGB
-    'actor_max_epi_len': 1000,
-    'success_threshold': 10000000,  #0.9,
-    'draw_image': True,
-    'draw_per_episode': 50,
-    'use_negative_reward': False, #True,
-    'negative_reward_val': -100.0,
+    ## Params controlled by this file
+    'game_name': 'LunarLander-v2', # gym env name
+    'actor_max_epi_len': 1000, # max step of gym env
+    'success_threshold': 200, # arbitrary success threshold of game score
     
-    'regularizer_multiplier': 1,
-    'mb_dim': 128,
-    'iteration': 80,
-    'unroll_step' : 5,
-    'stacking_frame': 8,
-    'replay_proportion': 75,   # x%
-    'start_lr': 0.0003,
-    'expriment_length': 4000,
-    'mlp_width': 128,
-    'discount': 0.995,
+    'RGB_Wrapper': True, # change vector based state to RGB
+    'stack_action_plane': True, # stack action information plane to RGB state
+    'additional_input_channels': 1, # num of additional planes can be stacked to RGB state, like planes with information about action or direction
+    'norm_factor': 255.0, # normalize RGB by /255.0
+    'resizing_state': True, # overwrite the H,W related params to resize
 
-    'support_size': 30,
-    'eps': 0.001,
-
-    'alpha_target': 0.01, # 0.1 ??
-    'policy_loss_weight': 3,
-    'value_loss_weight': 0.25,
-    'reward_loss_weight': 1,
     
-    'beta_var': 0.99,
-    'eps_var': 1e-12,
-
-    'hs_resolution': 36,
-
-    #bn?        
+    'draw_wrapped_state': False, # draw image which agent see actually
+    'draw_image': True, # draw full resolution RGB episode
+    'draw_per_episode': 50, # drawing slows donw the code, adjust frequency by this
+    'negative_reward': False, # experimental feature, making last zero reward to negative reward
+    'negative_reward_val': -100.0, # negative reward value
     
+    'mb_dim': 96, # dimension of minibatch 
+    'regularizer_multiplier': 1, # multiplier of regularization term
+    'unroll_step' : 4, # unroll step
+    'beta_var': 0.99, # related to advantage normalization
+    'eps_var': 1e-12, # related to advantage normalization
+    'hs_resolution': 36, # resolution of hidden state
+    'mlp_width': 128, # mlp network width
+    'support_size': 30, # support_size of categorical representation
+    'eps': 0.001, # categorical representation related
+    'discount': 0.995, # discount rate
+    'alpha_target': 0.01, # target network(prior parameters) moving average update ratio
+    'stacking_frame': 8, # stacking previous states
+    'value_loss_weight': 0.25, # multiplier for value loss
+    'reward_loss_weight': 1, # multiplier for reward loss
+
+    
+    ## HPO params controlled by config.yaml
+    'iteration': 80, # num of iteration 
+    'replay_proportion': 75, # proportion of the replay inside minibatch 
+    'start_lr': 0.0003, # learning rate
+    'expriment_length': 4000, # num of repetitions of self-play&update
+    'policy_loss_weight': 1, # multiplier for policy loss
+
+    'resize_height': 40, # image resize H
+    'resize_width': 60, # image resize W
+    
+    ## Params will be assigned by the code
+        # params['input_height']
+        # params['input_width']
+        # params['input_channels']
 }
+
 
 optimized_params = nni.get_next_parameter()
 params.update(optimized_params)
@@ -64,25 +78,9 @@ params.update(optimized_params)
 ## https://github.com/cmpark0126/pytorch-polynomial-lr-decay
 from torch_poly_lr_decay import PolynomialLRDecay
 
-
 class Representation(nn.Module): 
-    """Representation Network
-
-    Representation network produces hidden state from observations.
-    Hidden state scaled within the bounds of [-1,1]. 
-    Simple mlp network used with 1 skip connection.
-
-    input : raw input
-    output : hs(hidden state) 
-    """
     def __init__(self, input_channels, hidden_size, width):
         super().__init__()
-        '''
-        self.conv1 = nn.Conv2d(input_channels, 16, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.fc = nn.Linear(params['input_height'] * params['input_width'] * 64, hidden_size)
-        '''
         self.image_conv = nn.Sequential(
             nn.Conv2d(input_channels, 16, (2, 2)),
             nn.ReLU(),
@@ -96,13 +94,6 @@ class Representation(nn.Module):
 
     def forward(self, x):
         x = x.div(params['norm_factor']).float()
-        '''
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        x = torch.flatten(x, start_dim=1)
-        x = F.relu(self.fc(x))
-        '''
         x = self.image_conv(x)
         x = torch.flatten(x, start_dim=1)
         x = F.relu(self.fc(x))        
@@ -110,19 +101,6 @@ class Representation(nn.Module):
         return x
 
 class Dynamics(nn.Module): 
-    """Dynamics Network
-
-    Dynamics network transits (hidden state + action) to next hidden state and inferences reward model.
-    Hidden state scaled within the bounds of [-1,1]. Action encoded to one-hot representation. 
-    Zeros tensor is used for action -1.
-    
-    Output of the reward head is categorical representation, instaed of scalar value.
-    Categorical output will be converted to scalar value with 'to_scalar()',and when 
-    traning target value will be converted to categorical target with 'to_cr()'.
-    
-    input : hs, action
-    output : next_hs, reward 
-    """
     def __init__(self, input_dim, output_dim, width):
         super().__init__()
         self.layer1 = torch.nn.Linear(input_dim + params['action_space'], width)
@@ -165,17 +143,6 @@ class Dynamics(nn.Module):
 
 
 class Prediction(nn.Module): 
-    """Prediction Network
-
-    Prediction network inferences probability distribution of policy and value model from hidden state. 
-
-    Output of the value head is categorical representation, instaed of scalar value.
-    Categorical output will be converted to scalar value with 'to_scalar()',and when 
-    traning target value will be converted to categorical target with 'to_cr()'.
-        
-    input : hs
-    output : P, V 
-    """
     def __init__(self, input_dim, width):
         super().__init__()
         self.layer1 = torch.nn.Linear(input_dim, width)
@@ -206,12 +173,6 @@ class Prediction(nn.Module):
         return P, V
 
 
-"""
-For categorical representation
-reference : https://github.com/werner-duvaud/muzero-general
-In my opinion, support size have to cover the range of maximum absolute value of 
-reward and value of entire trajectories. Support_size 30 can cover almost [-900,900].
-"""
 support_size = params['support_size']
 eps = params['eps']
 
@@ -287,7 +248,7 @@ def draw_epi_act_rew(frame, episode_num, action, reward, score):
 def draw_pi(frame, probabilities=None):
     im = Image.fromarray(frame)
     drawer = ImageDraw.Draw(im)
-    text_color = (255,255,255)        
+    text_color = (0,0,0)        
     drawer.text((im.size[0]/20,im.size[1]*16/18), f"Pi: {np.array2string(probabilities, formatter={'float': lambda x: f'{x:.2f}'}, separator=', ')}", fill=text_color)
     im = np.array(im)
     return im
@@ -317,12 +278,12 @@ class Agent(nn.Module):
         super().__init__()
 
         self.env = gym.make(params['game_name'], render_mode="rgb_array")
-        if params['use_RGBImgObsWrapper']:
+        if params['RGB_Wrapper']:
             self.env = gym.wrappers.PixelObservationWrapper(self.env)
-            #self.env.observation_space = self.env.observation_space['pixels']
-            #self.env = gym.wrappers.ResizeObservation(self.env, 40)
-        params['input_height'], params['input_width'], params['input_channels'] = self.env.observation_space['pixels'].shape        
-        params['input_channels'] += 1 # R, G, B, action plane
+        params['input_height'], params['input_width'], params['input_channels'] = self.env.observation_space['pixels'].shape    
+        if params['resizing_state']:
+            params['input_height'], params['input_width'] = params['resize_height'], params['resize_width']
+        params['input_channels'] += params['additional_input_channels']
         params['action_space'] = self.env.action_space.n
         
         self.representation_network = Representation(params['stacking_frame']*params['input_channels'], params['hs_resolution'], width) 
@@ -345,13 +306,6 @@ class Agent(nn.Module):
 
 
     def self_play_mu(self, target, max_timestep=params['actor_max_epi_len']):       
-        """Self-play and save trajectory to replay buffer
-
-        Self-play with target network parameter
-
-        Eight previous observations stacked -> representation network -> prediction network 
-        -> sampling action follow policy -> next env step
-        """      
 
         self.state_traj = []
         self.action_traj = []
@@ -364,12 +318,14 @@ class Agent(nn.Module):
         last_frame = 1000
 
         state = self.env.reset()
-        #state_direction = state[0]['direction']
-        #state_direction_plane = np.full((1, params['input_height'], params['input_width']), state_direction/4*params['norm_factor'])
-        #params['input_channels'] += 1 # R, G, B, action plane @@@이걸 이쪽에서 조건 걸어서 더하는게 나을수도
-        state_image = state[0]['pixels'].transpose(2,0,1)       
-        previous_action_plane = np.full((1, params['input_height'], params['input_width']), action/params['action_space']*params['norm_factor'])
-        state = np.vstack((state_image, previous_action_plane))
+        
+        state_image = cv2.resize(state[0]['pixels'], (params['resize_width'], params['resize_height']), interpolation=cv2.INTER_AREA).transpose(2,0,1)
+        
+        if params['stack_action_plane']:
+            previous_action_plane = np.full((1, params['input_height'], params['input_width']), action/params['action_space']*params['norm_factor'])
+            state = np.vstack((state_image, previous_action_plane))
+        else:
+            state = state_image
         
         for i in range(max_timestep):
             if params['draw_image'] and global_i % params['draw_per_episode'] == 0:
@@ -393,22 +349,25 @@ class Agent(nn.Module):
                 img = draw_pi(img, P.detach().cpu().numpy())
                 writer.add_image(f"image/episode_from_selfplay[{global_i}]", img, i, dataformats='HWC')
 
-            #writer.add_image(f"image/wrapped_state[{global_i}]", state_image, i, dataformats='CHW')
+            if params['draw_wrapped_state']:
+                writer.add_image(f"image/wrapped_state[{global_i}]", state_image, i, dataformats='CHW')
             
             action = np.random.choice(np.arange(params['action_space'] ), p=P.detach().cpu().numpy())   
             state, r, terminated, truncated, _ = self.env.step(action)   
 
-            #state_direction = state['direction']
-            #state_direction_plane = np.full((1, params['input_height'], params['input_width']), state_direction/4*params['norm_factor'])
-            state_image = state['pixels'].transpose(2,0,1)
-            previous_action_plane = np.full((1, params['input_height'], params['input_width']), action/params['action_space']*params['norm_factor'])
-            state = np.vstack((state_image, previous_action_plane))
+            state_image = cv2.resize(state['pixels'], (params['resize_width'], params['resize_height']), interpolation=cv2.INTER_AREA).transpose(2,0,1)
+
+            if params['stack_action_plane']:
+                previous_action_plane = np.full((1, params['input_height'], params['input_width']), action/params['action_space']*params['norm_factor'])
+                state = np.vstack((state_image, previous_action_plane))
+            else:
+                state = state_image
 
 
             self.action_traj.append(action)
             self.P_traj.append(P.cpu().numpy())
             
-            if params['use_negative_reward'] and i==max_timestep-1 and not terminated:
+            if params['negative_reward'] and i==max_timestep-1 and not terminated:
                 r = params['negative_reward_val']
             self.r_traj.append(r)
             
@@ -445,18 +404,6 @@ class Agent(nn.Module):
 
 
     def update_weights_mu(self, target):
-        """Optimize network weights.
-
-        Iteration: 80
-        Mini-batch size: 16 (1 seqeuence in 1 replay)
-        Replay: 25% online data
-        Discount: 0.997
-        Unroll: 5 step
-        L_m: 5 step(Muesli)
-        Observations: Stack 8 frame
-        regularizer_multiplier: 5 
-        Loss: L_pg_cmpo + L_v/6/4 + L_r/5/1 + L_m
-        """
 
         for _ in range(params['iteration']): 
             state_traj = []
@@ -635,9 +582,7 @@ class Agent(nn.Module):
 
         for i in range(params['unroll_step']+1):
             writer.add_scalar(f"adv_norm/var_m[{i}]", self.var_m[i], global_i)
-            #writer.add_scalar(f"Time/{self.name}", duration, global_i)
 
-        #writer.add_histogram('Norm_adv/var', np.array(self.var_m), global_i)
         
         return
 
@@ -687,79 +632,3 @@ torch.save(target.state_dict(), 'weights_target.pt')
 agent.env.close()
 writer.close()
 
-
-
-
-
-
-'''
-start = time.time()
-end = time.time()
-print(f"L_m time consume {end - start:.5f} sec")
-'''
-
-
-'''
-#log_dir = os.path.join(os.environ["NNI_OUTPUT_DIR"], 'tensorboard')
-#print(os.environ["NNI_OUTPUT_DIR"])
-#print(os.environ)
-'''
-
-
-'''
-## Earned score per episode
-
-window = 30
-mean_arr = []
-for i in range(len(score_arr) - window + 1):
-    mean_arr.append(np.mean(np.array(score_arr[i:i+window])))
-for i in range(window - 1):
-    mean_arr.insert(0, np.nan)
-
-plt.plot(score_arr, label ='score')
-plt.plot(mean_arr, label ='mean')
-plt.ylim([-300,300])
-plt.legend(loc='upper left')
-plt.show()
-
-
-## game play video(target network)
-target.load_state_dict(torch.load("weights_target.pt"))
-env = gnwrapper.LoopAnimation(gym.make(game_name)) 
-state = env.reset()
-state_dim = len(state)
-game_score = 0
-score_arr2 = []
-state_arr = []
-for i in range(1000):
-    if i == 0:
-        stacked_state = np.concatenate((state, state, state, state, state, state, state, state), axis=0)
-    else:
-        stacked_state = np.roll(stacked_state,-state_dim,axis=0)        
-        stacked_state[-state_dim:]=state
-    with torch.no_grad():
-        hs = target.representation_network(torch.from_numpy(stacked_state).float().to(device))
-        P, v = target.prediction_network(hs)
-        action = np.random.choice(np.arange(agent.action_space), p=P.detach().numpy())   
-    if i %5==0:
-        env.render()
-    state, r, done, info = env.step(action.item())
-    print(r, done, info)
-    state_arr.append(state[0])
-    game_score += r 
-    score_arr2.append(game_score)
-    if i %10==0: 
-        print(game_score)
-    if done:
-        print('last frame number : ',i)
-        print('score :', game_score)
-        print(state_arr)
-       
-        break
-env.reset()
-env.display()
-
-
-plt.plot(score_arr2, label ='accumulated scores in one game play')
-plt.legend(loc='upper left')
-'''

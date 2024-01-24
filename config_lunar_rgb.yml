@@ -1,59 +1,33 @@
 experimentName: Muesli_minigrid
 searchSpace:
-  regularizer_multiplier:
-    _type: choice
-    _value: [1, 2]
-  mb_dim:
-    _type: choice
-    _value: [32, 128]
   iteration:
     _type: choice
-    _value: [20, 80]
-  unroll_step:
-    _type: choice
-    _value: [4]
-  stacking_frame:
-    _type: choice
-    _value: [8, 64]
+    _value: [20, 80, 160]
   replay_proportion:
     _type: choice
-    _value: [75]
+    _value: [75, 95]
   start_lr:
     _type: choice
-    _value: [0.0003]
-  'expriment_length':
+    _value: [0.0003, 0.0002]
+  expriment_length:
     _type: choice
     _value: [4000]    
-  mlp_width:
+  policy_loss_weight:
     _type: choice
-    _value: [128]
-  discount:
+    _value: [1, 3]    
+  resize_height:
     _type: choice
-    _value: [0.997]
+    _value: [40, 80]
+  resize_width:
+    _type: choice
+    _value: [60, 120]
+    
 
-  support_size:
-    _type: choice
-    _value: [30]
-  eps:
-    _type: choice
-    _value: [0.001]
-
-  alpha_target:
-    _type: choice
-    _value: [0.1, 0.01]
-
-  #For faster playing, turn off this.
-  draw_image:
-    _type: choice
-    _value: [True]
-  draw_per_episode:
-    _type: choice
-    _value: [30]
 
 experimentWorkingDirectory: ./nni-experiments
 trialCommand: python Muesli_lunar_rgb.py
 trialGpuNumber: 1
-trialConcurrency: 8
+trialConcurrency: 10
 maxTrialNumber: 100
 tuner:
   name: TPE
