@@ -4,3 +4,4 @@ torch
 matplotlib
 numpy
 minigrid
+gymnasium[other]
