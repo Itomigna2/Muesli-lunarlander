@@ -19,14 +19,15 @@ import numpy as np
 
 import nni
 params = {
-    'game_name': "MiniGrid-LockedRoom-v0", #"MiniGrid-LockedRoom-v0", #"MiniGrid-Playground-v0", #"MiniGrid-Empty-5x5-v0", #"MiniGrid-BlockedUnlockPickup-v0",
+    'game_name': "MiniGrid-FourRooms-v0", #"MiniGrid-LockedRoom-v0", #"MiniGrid-LockedRoom-v0", #"MiniGrid-Playground-v0", #"MiniGrid-Empty-5x5-v0", #"MiniGrid-BlockedUnlockPickup-v0",
     'use_RGBImgObsWrapper': False,
     'norm_factor': 10.0, # 255.0 for RGB
-    'actor_max_epi_len': 3000,
+    'actor_max_epi_len': 100,
     'success_threshold': 0.9,
     'draw_image': True,
     'draw_per_episode': 50,
-    'use_negative_reward': True,
+    'use_negative_reward': False, #True,
+    'negative_reward_val': -100.0,
     
     'regularizer_multiplier': 1,
     'mb_dim': 128,
@@ -52,14 +53,7 @@ params = {
 
     'hs_resolution': 36,
 
-
-
-
-
-
-    #bn?
-    
-        
+    #bn?        
     
 }
 
@@ -396,7 +390,7 @@ class Agent(nn.Module):
             self.P_traj.append(P.cpu().numpy())
             
             if params['use_negative_reward'] and i==max_timestep-1 and not terminated:
-                r = -1
+                r = params['negative_reward_val']
             self.r_traj.append(r)
             
             game_score += r
