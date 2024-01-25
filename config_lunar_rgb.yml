@@ -1,14 +1,23 @@
 experimentName: Muesli_minigrid
 searchSpace:
+  regularizer_multiplier:
+    _type: choice
+    _value: [1, 3, 10]
+  alpha_target:
+    _type: choice
+    _value: [0.01, 0.1]
+  mb_dim:
+    _type: choice
+    _value: [32, 128]
   iteration:
     _type: choice
-    _value: [20, 80, 160]
+    _value: [20, 80]
   replay_proportion:
     _type: choice
-    _value: [75, 95]
+    _value: [75]
   start_lr:
     _type: choice
-    _value: [0.0003, 0.0002]
+    _value: [0.0003]
   expriment_length:
     _type: choice
     _value: [4000]    
@@ -17,14 +26,13 @@ searchSpace:
     _value: [1, 3]    
   resize_height:
     _type: choice
-    _value: [40, 80]
+    _value: [72]
   resize_width:
     _type: choice
-    _value: [60, 120]
-
+    _value: [96]
   stack_action_plane:
     _type: choice
-    _value: [True, False]
+    _value: [False]
     
 
 

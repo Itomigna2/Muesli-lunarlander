@@ -19,6 +19,10 @@ import cv2
 import numpy as np
 
 import nni
+
+import torchsummary
+
+
 params = {
     ## Params controlled by this file
     'game_name': 'LunarLander-v2', # gym env name
@@ -37,8 +41,8 @@ params = {
     'negative_reward': False, # experimental feature, making last zero reward to negative reward
     'negative_reward_val': -100.0, # negative reward value
     
-    'mb_dim': 96, # dimension of minibatch 
-    'regularizer_multiplier': 1, # multiplier of regularization term
+
+    
     'unroll_step' : 4, # unroll step
     'beta_var': 0.99, # related to advantage normalization
     'eps_var': 1e-12, # related to advantage normalization
@@ -47,23 +51,26 @@ params = {
     'support_size': 30, # support_size of categorical representation
     'eps': 0.001, # categorical representation related
     'discount': 0.995, # discount rate
-    'alpha_target': 0.01, # target network(prior parameters) moving average update ratio
     'stacking_frame': 8, # stacking previous states
     'value_loss_weight': 0.25, # multiplier for value loss
     'reward_loss_weight': 1, # multiplier for reward loss
 
     
     ## HPO params controlled by config.yaml
+    'regularizer_multiplier': 1, # multiplier of regularization term
+    'alpha_target': 0.01, # target network(prior parameters) moving average update ratio
+    
+    'mb_dim': 128, # dimension of minibatch 
     'iteration': 80, # num of iteration 
     'replay_proportion': 75, # proportion of the replay inside minibatch 
     'start_lr': 0.0003, # learning rate
     'expriment_length': 4000, # num of repetitions of self-play&update
     'policy_loss_weight': 1, # multiplier for policy loss
 
-    'resize_height': 40, # image resize H
-    'resize_width': 60, # image resize W
+    'resize_height': 72, # image resize H
+    'resize_width': 96, # image resize W
 
-    'stack_action_plane': True, # stack action information plane to RGB state
+    'stack_action_plane': False, # stack action information plane to RGB state
     
     ## Params will be assigned by the code
         # params['input_height']
@@ -79,27 +86,28 @@ params.update(optimized_params)
 ## https://github.com/cmpark0126/pytorch-polynomial-lr-decay
 from torch_poly_lr_decay import PolynomialLRDecay
 
+
 class Representation(nn.Module): 
     def __init__(self, input_channels, hidden_size, width):
         super().__init__()
         self.image_conv = nn.Sequential(
-            nn.Conv2d(input_channels, 16, (2, 2)),
+            nn.Conv2d(input_channels, 16, (8, 8), stride=4),
             nn.ReLU(),
-            nn.MaxPool2d((2, 2)),
-            nn.Conv2d(16, 32, (2, 2)),
+            nn.Conv2d(16, 32, (4, 4), stride=2),
             nn.ReLU(),
-            nn.Conv2d(32, 64, (2, 2)),
+            nn.Conv2d(32, 16, (2, 2), stride=2),
             nn.ReLU()
         )
-        self.fc = nn.Linear(((params['input_height']-1)//2-2)*((params['input_width']-1)//2-2)*64, hidden_size)
+        self.fc = nn.Linear(240, hidden_size)
 
     def forward(self, x):
         x = x.div(params['norm_factor']).float()
         x = self.image_conv(x)
-        x = torch.flatten(x, start_dim=1)
-        x = F.relu(self.fc(x))        
+        x = torch.flatten(x, start_dim=1)  
+        x = F.relu(self.fc(x))
         x = (x - x.min(-1,keepdim=True)[0])/(x.max(-1,keepdim=True)[0] - x.min(-1,keepdim=True)[0])
         return x
+
 
 class Dynamics(nn.Module): 
     def __init__(self, input_dim, output_dim, width):
@@ -308,7 +316,7 @@ class Agent(nn.Module):
         self.beta_product_m = [1.0 for _ in range(params['unroll_step']+1)] 
 
 
-    def self_play_mu(self, target, max_timestep=params['actor_max_epi_len']):       
+    def self_play_mu(self, target, max_timestep=params['actor_max_epi_len']):   
 
         self.state_traj = []
         self.action_traj = []
@@ -416,7 +424,7 @@ class Agent(nn.Module):
             G_arr_mb = []
 
             for epi_sel in range(params['mb_dim']):
-                if(epi_sel < params['mb_dim'] * params['replay_proportion'] / 100):## replay proportion
+                if(epi_sel < params['mb_dim'] * params['replay_proportion'] / 100):
                     sel = np.random.randint(0,len(self.state_replay)) 
                 else:
                     sel = -1
@@ -448,7 +456,7 @@ class Agent(nn.Module):
 
             ## stacking 8 frame
             stacked_state_0 = torch.cat([state_traj[:, i] for i in range(params['stacking_frame'])], dim=1)
-    
+            
             ## agent network inference (5 step unroll)            
             hs = self.representation_network(stacked_state_0)
             first_P, first_v_logits = self.prediction_network(hs)
@@ -561,6 +569,28 @@ class Agent(nn.Module):
             self.optimizer.step()
             
 
+            '''
+            print('-------self.named_modules-------\n')
+            for name, module in self.named_modules():
+                print(name)
+                #print(module)
+
+            print('-------target.named_modules-------\n')
+            for name, module in target.named_modules():
+                print(name)
+                #print(module)
+
+            print('-------self.named_buffers-------\n')
+            for name, module in self.named_buffers():
+                print(name)
+                #print(module)
+            
+            print('-------target.named_modules-------\n')
+            for name, module in target.named_buffers():
+                print('target:\n', name)
+                #print(module)
+            '''
+            
             ## target network(prior parameters) moving average update
             alpha_target = params['alpha_target']
             params1 = self.named_parameters()
@@ -569,8 +599,18 @@ class Agent(nn.Module):
             for name1, param1 in params1:
                 if name1 in dict_params2:
                     dict_params2[name1].data.copy_(alpha_target*param1.data + (1-alpha_target)*dict_params2[name1].data)
-            target.load_state_dict(dict_params2)          
 
+            '''
+            buffers1 = self.named_buffers()
+            buffers2 = target.named_buffers()
+            dict_buffers2 = dict(buffers2)
+            for name1, buffer1 in buffers1:
+                if name1 in dict_buffers2:
+                    dict_buffers2[name1].data.copy_(alpha_target*buffer1.data + (1-alpha_target)*dict_buffers2[name1].data)
+                    
+            target.load_state_dict(dict(dict_params2, **dict_buffers2))          
+            '''
+            target.load_state_dict(dict_params2)
 
         self.scheduler.step()
 
@@ -599,6 +639,7 @@ score_arr = []
 agent = Agent(params['mlp_width'])
 target = Target(params['mlp_width'])
 print(agent)
+#torchsummary.summary(agent.representation_network, input_size=(24, 80, 120))
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--debug', action='store_true')
