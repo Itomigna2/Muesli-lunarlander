@@ -1,5 +1,7 @@
 # Muesli (LunarLander-v2)
 
+%% Recent works mainly progressed in the lunar_rgb branch. Recommend to read the README of ``lunar_rgb`` branch instead of this for a while.
+
 ## Introduction
 
 Here is simple implementation of Muesli algorithm. Muesli has same performance and network architecture as MuZero, but it can be trained without MCTS lookahead search, just use one-step lookahead. It can reduce computational cost significantly compared to MuZero.
