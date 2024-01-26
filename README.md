@@ -53,6 +53,7 @@ And we consider using https://github.com/kakaobrain/brain-agent for distributed 
 ### Current progress & Near-term plan
   * Now we are trying to use the CNN encoder for RGB input environment, but it's not work well now.
   * We will try to implement stable network architecture(following the Figure 10. in the paper) and check the losses and lines for a while.
+    * (Maybe the problem in this code is the wrong hidden state encoding layer. It has to have the same channel as input but I flattened that into one vector. I will fix it.) 
   * For speed up the experiments, we will try to change environnment to vectorized environment.
 
 
