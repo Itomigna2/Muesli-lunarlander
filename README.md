@@ -7,9 +7,9 @@ Here is simple implementation of Muesli algorithm. Muesli has same performance a
 Paper : [Muesli: Combining Improvements in Policy Optimization, Hessel et al., 2021](https://arxiv.org/abs/2104.06159) (v2 version)
 
 ## Objective
-This repository will be developed for collaborative research with MILA's researchers.
+This repository will be developed as part of the collaborative research with UdeM. Thanks for making this great experience and I hope this things to be useful for further progress. This codebase needs the hand of many talented contributers. Please feel free to contribute and contact!
 
-The goal is making distributed muesli algorithm for large scale training can be intergrated with 
+The goal is making distributed muesli algorithm for large scale training can be intergrated with below works,
 
 https://github.com/AGI-Collective/mini_ada
 
@@ -51,10 +51,10 @@ And we consider using https://github.com/kakaobrain/brain-agent for distributed 
   * ``python -m pdb Muesli_code.py --debug``
 
 ### Current progress & Near-term plan
-  * Now we are trying to use the CNN encoder for RGB input environment, but it's not work well now.
-  * We will try to implement stable network architecture(following the Figure 10. in the paper) and check the losses and lines for a while.
-    * (Maybe the problem in this code is the wrong hidden state encoding layer. It has to have the same channel as input but I flattened that into one vector. I will fix it.) 
-  * For speed up the experiments, we will try to change environnment to vectorized environment.
+  * This version uses CNN based encoder + LSTM based dynamics network architecture for RGB input environment (LunarLander-v2, using rgb states wrapped by PixelObservationWrapper(self.env))
+  * But It just works environment with fixed random seed (terrain and starting accelaration are fixed).
+  * (Near-term plan) Test stronger encoder architecture
+  * (Near-term plan) Try to use off-policy correction method like V-trace, Retrace.
 
 
 <details><summary>Previous README.md</summary>
