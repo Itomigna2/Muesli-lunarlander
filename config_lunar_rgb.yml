@@ -1,51 +1,39 @@
-experimentName: Muesli_minigrid
+experimentName: Muesli_lunar_rgb
 searchSpace:
-  regularizer_multiplier:
+
+  random_seed:
     _type: choice
-    _value: [1, 3, 10]
-  alpha_target:
+    _value: [42,52,62,72,82,92,93,94,95,96,97,98]   
+  use_proj:
     _type: choice
-    _value: [0.01, 0.1]
+    _value: [True]   
+  second_term_weight:
+    _type: choice
+    _value: [1]    
+  mixed_prior:
+    _type: choice
+    _value: [True]
+  stacking_frame:
+    _type: choice
+    _value: [4]
   mb_dim:
     _type: choice
-    _value: [32, 128]
+    _value: [128]
   iteration:
     _type: choice
-    _value: [20, 80]
-  replay_proportion:
+    _value: [20]
+  alpha_target:
     _type: choice
-    _value: [75]
-  start_lr:
-    _type: choice
-    _value: [0.0003]
-  expriment_length:
-    _type: choice
-    _value: [4000]    
-  policy_loss_weight:
-    _type: choice
-    _value: [1, 3]    
-  resize_height:
-    _type: choice
-    _value: [72]
-  resize_width:
-    _type: choice
-    _value: [96]
-  stack_action_plane:
-    _type: choice
-    _value: [False]
-    
-
+    _value: [0.01]
 
 experimentWorkingDirectory: ./nni-experiments
 trialCommand: python Muesli_lunar_rgb.py
 trialGpuNumber: 1
-trialConcurrency: 10
+trialConcurrency: 8
 maxTrialNumber: 100
 tuner:
-  name: TPE
-  classArgs:
-    optimize_mode: maximize
+  name: Random
 trainingService:
   platform: local
   useActiveGpu: True
-  maxTrialNumberPerGpu: 100
+  maxTrialNumberPerGpu: 400
