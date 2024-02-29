@@ -1,6 +1,9 @@
 experimentName: Muesli_lunar_rgb
 searchSpace:
 
+  use_last_fc:
+    _type: choice
+    _value: [True]   
   random_seed:
     _type: choice
     _value: [42,52,62,72,82,92,93,94,95,96,97,98]   

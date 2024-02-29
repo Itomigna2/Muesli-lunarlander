@@ -50,7 +50,7 @@ params = {
     'eps': 0.001, # categorical representation related
     'discount': 0.997, # discount rate
     'start_lr': 0.0003, # learning rate
-    'expriment_length': 4000, # num of repetitions of self-play&update  
+    'expriment_length': 20000, #4000, # num of repetitions of self-play&update  
     'replay_proportion': 75, # proportion of the replay inside minibatch
     'unroll_step' : 4, # unroll step
     'adv_clip_val': 1, # adv normalize clip value
@@ -60,6 +60,7 @@ params = {
     'reward_loss_weight': 1, # multiplier for reward loss
 
     ## HPO params controlled by config.yaml
+    'use_last_fc': True,
     'random_seed': 42, # random seed
     'use_proj': True, # use projection with mlp in the networks, True is recommended
     'second_term_weight': 1, # regularizer term weight
@@ -95,22 +96,87 @@ def mlp_proj(input_size, output_size):
         )
     
 
+class ResNet(torch.nn.Module):
+    def __init__(self, module):
+        super().__init__()
+        self.module = module
+
+    def forward(self, inputs):
+        return self.module(inputs) + inputs
+
+
+def conv3x3(in_channels, out_channels, stride=1):
+    return torch.nn.Conv2d(
+        in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False
+    )
+
 class Representation(nn.Module): 
     def __init__(self, input_channels, hidden_size, mlp_width):   
         super().__init__()
         self.image_conv = nn.Sequential(
-            nn.Conv2d(input_channels, 16, (4, 4), stride=2),
-            nn.ReLU(),
-            nn.MaxPool2d(2, stride=2),
-            nn.Conv2d(16, 32, (2, 2), stride=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, stride=2),
-            nn.Conv2d(32, 16, (2, 2), stride=1),
+            nn.Conv2d(input_channels, 16, (3, 3), stride=1),
+            #nn.ReLU(),
+            nn.MaxPool2d(3, stride=2, padding=1),
+            ResNet(
+                torch.nn.Sequential(
+                    torch.nn.ReLU(),
+                    conv3x3(16, 16, 1),
+                    torch.nn.ReLU(),
+                    conv3x3(16, 16, 1),
+                )
+            ),
+            ResNet(
+                torch.nn.Sequential(
+                    torch.nn.ReLU(),
+                    conv3x3(16, 16, 1),
+                    torch.nn.ReLU(),
+                    conv3x3(16, 16, 1),
+                )
+            ),
+            nn.Conv2d(16, 32, (3, 3), stride=1),
+            nn.MaxPool2d(3, stride=2, padding=1),
+            ResNet(
+                torch.nn.Sequential(
+                    torch.nn.ReLU(),
+                    conv3x3(32, 32, 1),
+                    torch.nn.ReLU(),
+                    conv3x3(32, 32, 1),
+                )
+            ),
+            ResNet(
+                torch.nn.Sequential(
+                    torch.nn.ReLU(),
+                    conv3x3(32, 32, 1),
+                    torch.nn.ReLU(),
+                    conv3x3(32, 32, 1),
+                )
+            ),
+            nn.Conv2d(32, 16, (3, 3), stride=1),
+            nn.MaxPool2d(3, stride=2, padding=1),
+            ResNet(
+                torch.nn.Sequential(
+                    torch.nn.ReLU(),
+                    conv3x3(16, 16, 1),
+                    torch.nn.ReLU(),
+                    conv3x3(16, 16, 1),
+                )
+            ),
+            ResNet(
+                torch.nn.Sequential(
+                    torch.nn.ReLU(),
+                    conv3x3(16, 16, 1),
+                    torch.nn.ReLU(),
+                    conv3x3(16, 16, 1),
+                )
+            ),
             nn.ReLU(),
         )        
+        if params['use_last_fc']:
+            self.fc_0 = nn.Linear(1408, hidden_size)
+            self.lstm = nn.LSTM(hidden_size, hidden_size) 
+        else:
+            self.lstm = nn.LSTM(1408, hidden_size) 
 
-        #self.fc_0 = nn.Linear(1120, hidden_size)
-        self.lstm = nn.LSTM(1120, hidden_size) 
         self.proj_0 = mlp_proj(hidden_size, hidden_size)
         self.proj_1 = mlp_proj(hidden_size, hidden_size)         
 
@@ -118,7 +184,8 @@ class Representation(nn.Module):
         x = x.div(params['norm_factor']).float()
         x = self.image_conv(x)
         x = torch.flatten(x, start_dim=1)
-        #x = F.relu(self.fc_0(x))
+        if params['use_last_fc']:
+            x = F.relu(self.fc_0(x))
         x, hc = self.lstm(x.unsqueeze(0))
         x = x.squeeze(0)
         pre_p, pre_v = x, x
@@ -365,7 +432,7 @@ class Agent(nn.Module):
         r = 0
         last_frame = 1000
 
-        state = self.env.reset(seed=params['random_seed'])
+        state = self.env.reset()#seed=params['random_seed'])
         
         state_image = cv2.resize(state[0]['pixels'], (params['resize_width'], params['resize_height']), interpolation=cv2.INTER_AREA).transpose(2,0,1)
         
