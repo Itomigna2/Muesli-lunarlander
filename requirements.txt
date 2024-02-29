@@ -1,5 +1,7 @@
-tensorboardX
+tensorboard
 gymnasium[box2d]
 torch
 matplotlib
 numpy
+minigrid
+gymnasium[other]
