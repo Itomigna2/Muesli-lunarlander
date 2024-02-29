@@ -60,7 +60,8 @@ params = {
     'reward_loss_weight': 1, # multiplier for reward loss
 
     ## HPO params controlled by config.yaml
-    'use_last_fc': True,
+    'use_last_fc': True, # related to represenation 
+    'use_fixed_random_seed': True, # use fixed random seed on the Gym enviornment
     'random_seed': 42, # random seed
     'use_proj': True, # use projection with mlp in the networks, True is recommended
     'second_term_weight': 1, # regularizer term weight
@@ -115,7 +116,6 @@ class Representation(nn.Module):
         super().__init__()
         self.image_conv = nn.Sequential(
             nn.Conv2d(input_channels, 16, (3, 3), stride=1),
-            #nn.ReLU(),
             nn.MaxPool2d(3, stride=2, padding=1),
             ResNet(
                 torch.nn.Sequential(
@@ -432,7 +432,10 @@ class Agent(nn.Module):
         r = 0
         last_frame = 1000
 
-        state = self.env.reset()#seed=params['random_seed'])
+        if params['use_fixed_random_seed']:
+            state = self.env.reset(seed=params['random_seed'])
+        else:
+            state = self.env.reset()
         
         state_image = cv2.resize(state[0]['pixels'], (params['resize_width'], params['resize_height']), interpolation=cv2.INTER_AREA).transpose(2,0,1)
         
@@ -706,11 +709,12 @@ class Agent(nn.Module):
         
         return
 
-torch.manual_seed(42)
-torch.backends.cudnn.deterministic = True
+#torch.manual_seed(42)
+#torch.backends.cudnn.deterministic = True
 #torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.benchmark = True
-np.random.seed(42)
+#torch.backends.cudnn.benchmark = True
+#np.random.seed(42)
+#lstm related; CUBLAS_WORKSPACE_CONFIG=:16:8
 
 print(torch.cuda.is_available())
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
