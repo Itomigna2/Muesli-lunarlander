@@ -1,7 +1,5 @@
 # Muesli (LunarLander-v2)
 
-%% Recent works mainly progressed in the lunar_rgb branch. Recommend to read the README of ``lunar_rgb`` branch instead of this for a while.
-
 ## Introduction
 
 Here is simple implementation of Muesli algorithm. Muesli has same performance and network architecture as MuZero, but it can be trained without MCTS lookahead search, just use one-step lookahead. It can reduce computational cost significantly compared to MuZero.
@@ -9,9 +7,9 @@ Here is simple implementation of Muesli algorithm. Muesli has same performance a
 Paper : [Muesli: Combining Improvements in Policy Optimization, Hessel et al., 2021](https://arxiv.org/abs/2104.06159) (v2 version)
 
 ## Objective
-This repository will be developed for collaborative research with MILA's researchers.
+This repository will be developed as part of the collaborative research with UdeM. Thanks for making this great experience and I hope this things to be useful for further progress. This codebase needs the hand of many talented contributers. Please feel free to contribute and contact!
 
-The goal is making distributed muesli algorithm for large scale training can be intergrated with 
+The goal is making distributed muesli algorithm for large scale training can be intergrated with below works,
 
 https://github.com/AGI-Collective/mini_ada
 
@@ -28,7 +26,7 @@ And we consider using https://github.com/kakaobrain/brain-agent for distributed 
 2. Download Dockerfile
 3. Build Dockerfile ``docker build --build-arg git_config_name="your_git_name" --build-arg git_config_email="your_git_email" --build-arg CACHEBUST=$(date +%s) -t muesli_image .``
 4. Run docker image (Adjust options for your device configuration)
-``docker run --gpus '"device=0,1"' -p 8888:8888 -p 8080:8080 --name mu --rm -it muesli_image``
+``docker run --gpus '"device=0,1"' -p 8888:8888 -p 8080:8080 -p 6006:6006 -p 6007:6007 -p 6008:6008 --name mu --rm -it muesli_image``
 5. Copy the jupyterlab token (If you want to make it background process, press Ctrl + P,Q)
 6. Login to the jupyterlab through browser or jupyterlab desktop ```http://your_local_or_server_ip:8888``` with token
 7. Launch HPO experiment with nni (on the jupyterlab terminal) ``nnictl create -f --config config.yml``
@@ -42,8 +40,22 @@ And we consider using https://github.com/kakaobrain/brain-agent for distributed 
 
 ### See experiment’s progress on MS nni
   * You can see experiments on ‘Trials detail’ tab, and see hyperparameters by using Add/Remove columns button.
+  * (log_dir of nni is changed for fixing issue about launching the TensorBoard)
 
+### TensorBoard
+  * Launch TensorBoard through MS nni. Click the checkbox to the left of the trial number and click TensorBoard button.
+  * About TensorBoard image slide precision
+    * TensorBoard use the [reservoir sampling](https://en.wikipedia.org/wiki/Reservoir_sampling), so some images in the episode can be skipped. If you want slide rendered images more precisely, launch TensorBoard manually by this command ``tensorboard --logdir . --samples_per_plugin images=100 --bind_all`` (directory: nni-experiments/_latest/trials/your_trial_ID/output/tensorboard) (it can be checked on terminal output)
+   
+### Debug with pdb
+  * ``python -m pdb Muesli_code.py --debug``
 
+### Current progress & Near-term plan
+  * This version uses CNN based representation network + LSTM based dynamics network architecture for RGB input environment (LunarLander-v2, using rgb states wrapped by PixelObservationWrapper(self.env))
+  * It works for randomly initialized env(random terrain and acceleration), but still not perfectly converge to more than 200 score. It needs to be improved further.
+  * (Near-term plan) Test stronger encoder architecture
+  * (Near-term plan) Efficiency optimization about code and nni experiment setting
+  * (Near-term plan) Try to use off-policy correction method like V-trace, Retrace.
 
 
 <details><summary>Previous README.md</summary>
@@ -123,5 +135,4 @@ Lunarlander-v2 env document : https://www.gymlibrary.dev/environments/box2d/luna
 
 </p>
 </details>
-
 
