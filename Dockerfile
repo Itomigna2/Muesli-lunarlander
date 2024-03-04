@@ -19,7 +19,7 @@ RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN pip install jupyterlab
 RUN pip install --upgrade jupyterlab jupyterlab-git
-RUN pip install jupyter-collaboration
+RUN pip install jupyter-collaboration==2.0.1
 EXPOSE 8888
 
 RUN pip install nni
