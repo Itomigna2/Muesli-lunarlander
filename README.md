@@ -50,12 +50,11 @@ And we consider using https://github.com/kakaobrain/brain-agent for distributed 
 ### Debug with pdb
   * ``python -m pdb Muesli_code.py --debug``
 
-### Current progress & Near-term plan
-  * This version uses CNN based representation network + LSTM based dynamics network architecture for RGB input environment (LunarLander-v2, using rgb states wrapped by PixelObservationWrapper(self.env))
-  * It works for randomly initialized env(random terrain and acceleration), but still not perfectly converge to more than 200 score. It needs to be improved further.
-  * (Near-term plan) Test stronger encoder architecture
-  * (Near-term plan) Efficiency optimization about code and nni experiment setting
-  * (Near-term plan) Try to use off-policy correction method like V-trace, Retrace.
+### Wiki page
+  * [Wiki](https://github.com/Itomigna2/Muesli-lunarlander/wiki)
+    * [Current progress & Near-term plans](https://github.com/Itomigna2/Muesli-lunarlander/wiki/Current-progress-&-Near%E2%80%90term-plan)
+    * [Model architecture](https://github.com/Itomigna2/Muesli-lunarlander/wiki/Model-architecture)
+    * [Model card](https://github.com/Itomigna2/Muesli-lunarlander/wiki/Model-Card)
 
 
 <details><summary>Previous README.md</summary>
