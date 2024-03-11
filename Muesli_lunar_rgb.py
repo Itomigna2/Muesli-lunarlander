@@ -37,7 +37,7 @@ params = {
     
     'draw_wrapped_state': False, # draw image which agent see actually
     'draw_image': True, # draw full resolution RGB episode
-    'draw_per_episode': 50, # drawing slows down the code, adjust frequency by this
+    'draw_per_episode': 500, # drawing slows down the code, adjust frequency by this
     'negative_reward': False, # experimental feature, making last zero reward to negative reward
     'negative_reward_val': -100.0, # negative reward value
     'stack_action_plane': False, #True, #False, # stack action information plane to RGB state 
@@ -181,7 +181,7 @@ class Representation(nn.Module):
         self.proj_1 = mlp_proj(hidden_size, hidden_size)         
 
     def forward(self, x):
-        x = x.div(params['norm_factor']).float()
+        x = x.div(params['norm_factor'])
         x = self.image_conv(x)
         x = torch.flatten(x, start_dim=1)
         if params['use_last_fc']:
@@ -421,7 +421,7 @@ class Agent(nn.Module):
 
 
     def self_play_mu(self, target, max_timestep=params['actor_max_epi_len']):  
-
+        
         self.state_traj = []
         self.action_traj = []
         self.P_traj = []
@@ -459,7 +459,7 @@ class Agent(nn.Module):
                 stacked_state[-1*params['input_channels']:]=state                
             
             with torch.no_grad():
-                output_p , output_v, _ = target.representation_network(torch.from_numpy(stacked_state).float().unsqueeze(0).to(device))
+                output_p , output_v, _ = target.representation_network(torch.from_numpy(stacked_state).unsqueeze(0).to(device))
                 P = target.policy_network(output_p).cpu()
                 P = P.squeeze(0).detach().numpy()
 
@@ -525,6 +525,9 @@ class Agent(nn.Module):
 
 
     def update_weights_mu(self, target):
+
+        uniform_dist = torch.full((params['mb_dim'], params['action_space']), 1/params['action_space'], device=device)
+        batch_action = torch.cat([torch.zeros(params['mb_dim'], 1) + i for i in range(params['action_space'])]).unsqueeze(0).to(device)
         
         for _ in range(params['iteration']): 
             state_traj = []
@@ -605,7 +608,6 @@ class Agent(nn.Module):
             L_m = 0     
             kl_loss = torch.nn.KLDivLoss(reduction="none")
 
-            uniform_dist = torch.full((params['mb_dim'], params['action_space']), 1/params['action_space'], device=device)
             
             for i in range(params['unroll_step']+1):
                 with torch.no_grad():
@@ -615,7 +617,6 @@ class Agent(nn.Module):
                     t_P, t_v_logits = target.policy_network(output_p), target.value_network(output_v)
                                         
                     batch_t_hs = (t_hs[0].repeat(1,params['action_space'],1), t_hs[1].repeat(1,params['action_space'],1))
-                    batch_action = torch.cat([torch.zeros(params['mb_dim'], 1) + i for i in range(params['action_space'])]).unsqueeze(0).to(device)
 
                     _, pre_v, pre_r = target.dynamics_network(batch_action, batch_t_hs)
                     pre_v, pre_r = pre_v.squeeze(0), pre_r.squeeze(0)
@@ -757,4 +758,3 @@ for i in range(params['expriment_length']):
 torch.save(target.state_dict(), 'weights_target.pt')  
 agent.env.close()
 writer.close()
-
