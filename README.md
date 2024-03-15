@@ -31,6 +31,8 @@ And we consider using https://github.com/kakaobrain/brain-agent for distributed 
 6. Login to the jupyterlab through browser or jupyterlab desktop ```http://your_local_or_server_ip:8888``` with token
 7. Launch HPO experiment with nni (on the jupyterlab terminal) ``nnictl create -f --config config.yml``
 8. Access nni through browser ``http://your_local_or_server_ip:8080``
+9. Launch Tensorboard on the jupyterlab terminal (use one more bash terminal) ``tensorboard --logdir ./nni-experiments/_latest/trials --bind_all`` (for seeing every experiment's TB logs in one page)
+10. Access Tensorboard through browser ``http://your_local_or_server_ip:6006``
     
 
 ### Develope with jupyterlab
@@ -40,10 +42,13 @@ And we consider using https://github.com/kakaobrain/brain-agent for distributed 
 
 ### See experiment’s progress on MS nni
   * You can see experiments on ‘Trials detail’ tab, and see hyperparameters by using Add/Remove columns button.
+  * **NOTE**: the hyperparameters displayed in the nni page are mismatched with experiments, so using Tensorboard HPARAMS tab is recommended.
   * (log_dir of nni is changed for fixing issue about launching the TensorBoard)
+  
 
 ### TensorBoard
   * Launch TensorBoard through MS nni. Click the checkbox to the left of the trial number and click TensorBoard button.
+  * Or use ``tensorboard --logdir ./nni-experiments/_latest/trials --bind_all`` for check every experiments.
   * About TensorBoard image slide precision
     * TensorBoard use the [reservoir sampling](https://en.wikipedia.org/wiki/Reservoir_sampling), so some images in the episode can be skipped. If you want slide rendered images more precisely, launch TensorBoard manually by this command ``tensorboard --logdir . --samples_per_plugin images=100 --bind_all`` (directory: nni-experiments/_latest/trials/your_trial_ID/output/tensorboard) (it can be checked on terminal output)
    
