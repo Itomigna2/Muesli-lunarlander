@@ -1,36 +1,20 @@
 experimentName: Muesli_lunar_rgb
 searchSpace:
 
-  use_last_fc:
-    _type: choice
-    _value: [True]
-  use_fixed_random_seed:
-    _type: choice
-    _value: [False]
-  random_seed:
-    _type: choice
-    _value: [42,52,62,72,82,92,93,94,95,96,97,98]   
-  use_proj:
-    _type: choice
-    _value: [True]   
-  second_term_weight:
-    _type: choice
-    _value: [1]
-  mixed_prior:
-    _type: choice
-    _value: [True]
-  stacking_frame:
-    _type: choice
-    _value: [4]
   mb_dim:
     _type: choice
     _value: [128]
   iteration:
     _type: choice
     _value: [20]
-  alpha_target:
+
+  use_fixed_random_seed:
     _type: choice
-    _value: [0.01]
+    _value: [True] #,False]
+  random_seed:
+    _type: choice
+    _value: [4,5,6,7]
+
 
 experimentWorkingDirectory: ./nni-experiments
 trialCommand: python Muesli_lunar_rgb.py

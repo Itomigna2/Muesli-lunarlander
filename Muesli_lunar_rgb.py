@@ -28,48 +28,50 @@ params = {
     'game_name': 'LunarLander-v2', # gym env name
     'actor_max_epi_len': 1000, # max step of gym env
     'success_threshold': 200, # arbitrary success threshold of game score
+    'expriment_length': 20000, #4000, # num of repetitions of self-play&update  
 
     'RGB_Wrapper': True, # change vector based state to RGB
     'norm_factor': 255.0, # normalize RGB by /255.0
     'resizing_state': True, # overwrite the H,W related params to resize
     'resize_height': 72, # image resize H
     'resize_width': 96, # image resize W
-    
+    'stacking_frame': 4, # stacking previous states
+
+    'hs_resolution': 512, # resolution of hidden state
+    'mlp_width': 128,  # mlp network width
+    'use_last_fc': True, # related to represenation 
+    'use_proj': True, # use projection with mlp in the networks, True is recommended
+    'support_size': 30, # support_size of categorical representation
+    'eps': 0.001, # categorical representation related
+
     'draw_wrapped_state': False, # draw image which agent see actually
     'draw_image': True, # draw full resolution RGB episode
     'draw_per_episode': 500, # drawing slows down the code, adjust frequency by this
+
     'negative_reward': False, # experimental feature, making last zero reward to negative reward
     'negative_reward_val': -100.0, # negative reward value
-    'stack_action_plane': False, #True, #False, # stack action information plane to RGB state 
+    'stack_action_plane': False, # experimental feature, stack action information plane to RGB state (it's not clearly coded now)
     
     'beta_var': 0.99, # related to advantage normalization
     'eps_var': 1e-12, # related to advantage normalization
-    'hs_resolution': 512, # resolution of hidden state
-    'mlp_width': 128,  # mlp network width
-    'support_size': 30, # support_size of categorical representation
-    'eps': 0.001, # categorical representation related
     'discount': 0.997, # discount rate
     'start_lr': 0.0003, # learning rate
-    'expriment_length': 20000, #4000, # num of repetitions of self-play&update  
     'replay_proportion': 75, # proportion of the replay inside minibatch
     'unroll_step' : 4, # unroll step
     'adv_clip_val': 1, # adv normalize clip value
+    'alpha_target': 0.01, # target network(prior parameters) moving average update ratio
+    'mixed_prior': True, # using mixed pi_prior
 
     'total_policy_loss_weight': 1, # total policy loss weight
     'value_loss_weight': 0.25, # multiplier for value loss
     'reward_loss_weight': 1, # multiplier for reward loss
+    'second_term_weight': 1, # regularizer term weight
 
     ## HPO params controlled by config.yaml
-    'use_last_fc': True, # related to represenation 
     'use_fixed_random_seed': True, # use fixed random seed on the Gym enviornment
     'random_seed': 42, # random seed
-    'use_proj': True, # use projection with mlp in the networks, True is recommended
-    'second_term_weight': 1, # regularizer term weight
-    'mixed_prior': True, # using mixed pi_prior
-    'stacking_frame': 4, # stacking previous states
     'mb_dim': 128, # dimension of minibatch 
     'iteration': 20, # num of iteration 
-    'alpha_target': 0.01, # target network(prior parameters) moving average update ratio
 
     ## Params will be assigned by the code
         # params['input_height']
@@ -79,6 +81,7 @@ params = {
 }
 
 optimized_params = nni.get_next_parameter()
+print(optimized_params)
 params.update(optimized_params)
 
 ## For linear lr decay
@@ -737,6 +740,16 @@ else:
     print(log_dir)
 
 
+for key, value in optimized_params.items():
+        if isinstance(value, bool):  # Check if it's a boolean value
+            optimized_params[key] = int(value) 
+        else:
+            optimized_params[key] = value
+
+writer.add_text('hparams:', str(optimized_params))
+writer.add_hparams(optimized_params, {'hpo/global_step' : 0, 'hpo/game_score': 0, 'hpo/moving_avg': 0}, run_name='hpo')
+
+
 ## initialization
 target.load_state_dict(agent.state_dict())
 
@@ -745,9 +758,10 @@ target.load_state_dict(agent.state_dict())
 for i in range(params['expriment_length']): 
     global_i = i            
     with debug_time("selfplay_time", global_i):
-        game_score , last_r, frame = agent.self_play_mu(target)       
-    nni.report_intermediate_result(game_score)
+        game_score , last_r, frame = agent.self_play_mu(target)     
     score_arr.append(game_score)      
+    nni.report_intermediate_result(game_score)
+    writer.add_hparams(optimized_params, {'hpo/global_step' : i, 'hpo/game_score': game_score, 'hpo/moving_avg': np.mean(np.array(score_arr[-20:]))}, run_name='hpo')
     if game_score > params['success_threshold'] and np.mean(np.array(score_arr[-20:])) > params['success_threshold']:
         print('Successfully learned')
         nni.report_final_result(game_score)
