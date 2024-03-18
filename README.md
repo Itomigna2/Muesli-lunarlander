@@ -26,7 +26,7 @@ And we consider using https://github.com/kakaobrain/brain-agent for distributed 
 2. Download Dockerfile
 3. Build Dockerfile ``docker build --build-arg git_config_name="your_git_name" --build-arg git_config_email="your_git_email" --build-arg CACHEBUST=$(date +%s) -t muesli_image .``
 4. Run docker image (Adjust options for your device configuration)
-``docker run --gpus '"device=0,1"' -p 8888:8888 -p 8080:8080 -p 6006:6006 -p 6007:6007 -p 6008:6008 --name mu --rm -it muesli_image``
+``docker run --gpus all -p 8888:8888 -p 8080:8080 -p 6006:6006 -p 6007:6007 -p 6008:6008 --name mu --rm -it muesli_image``
 5. Copy the jupyterlab token (If you want to make it background process, press Ctrl + P,Q)
 6. Login to the jupyterlab through browser or jupyterlab desktop ```http://your_local_or_server_ip:8888``` with token
 7. Launch HPO experiment with nni (on the jupyterlab terminal) ``nnictl create -f --config config.yml``
